@@ -2,7 +2,7 @@
 
 :root {
   --background: #ffffff;
-  --foreground: #171717;
+  --foreground: #212529;
 }
 
 @theme inline {
@@ -12,15 +12,18 @@
   --font-mono: var(--font-geist-mono);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
-}
-
 body {
   background: var(--background);
-  color: var(--foreground);
+  color: var(--212529);
   font-family: Arial, Helvetica, sans-serif;
+}
+
+input, select, textarea {
+  background-color: #dddddd;
+  color: #212529;
+}
+
+.alert {
+  background-color: #8E4A49;
+  color: #ffffff;
 }
