@@ -33,13 +33,24 @@ export default function AdminPage() {
     setTimeout(() => setMessage(''), 3000)
   }
 
+  const post = async (table: string, data: object) => {
+    const res = await fetch('/api/admin/data', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ table, data })
+    })
+    const json = await res.json()
+    if (!res.ok) {
+      showMessage('Error: ' + json.error)
+      return false
+    }
+    return true
+  }
+
   const addMake = async () => {
     if (!newMake.trim()) return
-    const { error } = await supabase.from('makes').insert({ name: newMake.trim() })
-    if (error) {
-      showMessage('Error: ' + error.message)
-      return
-    }
+    const ok = await post('makes', { name: newMake.trim() })
+    if (!ok) return
     showMessage('Make added successfully')
     setNewMake('')
     supabase.from('makes').select('*').order('name').then(({ data }) => {
@@ -49,29 +60,23 @@ export default function AdminPage() {
 
   const addModel = async () => {
     if (!newModel.name.trim() || !newModel.make_id) return
-    const { error } = await supabase.from('models').insert({
+    const ok = await post('models', {
       name: newModel.name.trim(),
       make_id: Number(newModel.make_id),
       notes: newModel.notes.trim() || null
     })
-    if (error) {
-      showMessage('Error: ' + error.message)
-      return
-    }
+    if (!ok) return
     showMessage('Model added successfully')
     setNewModel({ name: '', make_id: '', notes: '' })
   }
 
   const addFootprint = async () => {
     if (!newFootprint.name.trim()) return
-    const { error } = await supabase.from('footprints').insert({
+    const ok = await post('footprints', {
       name: newFootprint.name.trim(),
       description: newFootprint.description.trim() || null
     })
-    if (error) {
-      showMessage('Error: ' + error.message)
-      return
-    }
+    if (!ok) return
     showMessage('Footprint added successfully')
     setNewFootprint({ name: '', description: '' })
     supabase.from('footprints').select('*').order('name').then(({ data }) => {
@@ -81,45 +86,36 @@ export default function AdminPage() {
 
   const addOptic = async () => {
     if (!newOptic.name.trim() || !newOptic.manufacturer.trim()) return
-    const { error } = await supabase.from('optics').insert({
+    const ok = await post('optics', {
       name: newOptic.name.trim(),
       manufacturer: newOptic.manufacturer.trim(),
       msrp: newOptic.msrp ? Number(newOptic.msrp) : null,
       notes: newOptic.notes.trim() || null,
       affiliate_url: newOptic.affiliate_url.trim() || null
     })
-    if (error) {
-      showMessage('Error: ' + error.message)
-      return
-    }
+    if (!ok) return
     showMessage('Optic added successfully')
     setNewOptic({ name: '', manufacturer: '', msrp: '', notes: '', affiliate_url: '' })
   }
 
   const addModelFootprint = async () => {
     if (!newModelFootprint.model_id || !newModelFootprint.footprint_id) return
-    const { error } = await supabase.from('model_footprints').insert({
+    const ok = await post('model_footprints', {
       model_id: Number(newModelFootprint.model_id),
       footprint_id: Number(newModelFootprint.footprint_id)
     })
-    if (error) {
-      showMessage('Error: ' + error.message)
-      return
-    }
+    if (!ok) return
     showMessage('Model footprint linked successfully')
     setNewModelFootprint({ model_id: '', footprint_id: '' })
   }
 
   const addOpticFootprint = async () => {
     if (!newOpticFootprint.optic_id || !newOpticFootprint.footprint_id) return
-    const { error } = await supabase.from('optic_footprints').insert({
+    const ok = await post('optic_footprints', {
       optic_id: Number(newOpticFootprint.optic_id),
       footprint_id: Number(newOpticFootprint.footprint_id)
     })
-    if (error) {
-      showMessage('Error: ' + error.message)
-      return
-    }
+    if (!ok) return
     showMessage('Optic footprint linked successfully')
     setNewOpticFootprint({ optic_id: '', footprint_id: '' })
   }
