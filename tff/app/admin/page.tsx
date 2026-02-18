@@ -33,24 +33,19 @@ export default function AdminPage() {
     setTimeout(() => setMessage(''), 3000)
   }
 
-const addMake = async () => {
-  if (!newMake.trim()) return
-  const res = await fetch('/api/admin/data', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ table: 'makes', data: { name: newMake.trim() } })
-  })
-  const json = await res.json()
-  if (!res.ok) {
-    showMessage('Error: ' + json.error)
-    return
+  const addMake = async () => {
+    if (!newMake.trim()) return
+    const { error } = await supabase.from('makes').insert({ name: newMake.trim() })
+    if (error) {
+      showMessage('Error: ' + error.message)
+      return
+    }
+    showMessage('Make added successfully')
+    setNewMake('')
+    supabase.from('makes').select('*').order('name').then(({ data }) => {
+      if (data) setMakes(data)
+    })
   }
-  showMessage('Make added successfully')
-  setNewMake('')
-  supabase.from('makes').select('*').order('name').then(({ data }) => {
-    if (data) setMakes(data)
-  })
-}
 
   const addModel = async () => {
     if (!newModel.name.trim() || !newModel.make_id) return
