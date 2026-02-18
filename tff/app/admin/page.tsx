@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { supabase } from '../lib/supabase'
+import { supabaseAdmin as supabase } from '../lib/supabase-admin'
 
 type Make = { id: number; name: string }
 type Footprint = { id: number; name: string; description: string }
