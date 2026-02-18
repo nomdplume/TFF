@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import { supabaseAdmin as supabase } from '../lib/supabase-admin'
+console.log('key:', process.env.NEXT_PUBLIC_SUPABASE_SERVICE_ROLE_KEY)
 
 type Make = { id: number; name: string }
 type Footprint = { id: number; name: string; description: string }
