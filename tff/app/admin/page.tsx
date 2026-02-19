@@ -290,14 +290,32 @@ export default function AdminPage() {
       )}
 
       {/* FOOTPRINTS */}
-      {activeTab === 'footprints' && (
-        <div className="grid gap-3">
-          <h2 className="font-semibold">Add Footprint</h2>
-          <input className={inputClass} placeholder="Footprint name e.g. RMR" value={newFootprint.name} onChange={e => setNewFootprint({ ...newFootprint, name: e.target.value })} />
-          <input className={inputClass} placeholder="Description (optional)" value={newFootprint.description} onChange={e => setNewFootprint({ ...newFootprint, description: e.target.value })} />
-          <button onClick={addFootprint} className={btnClass}>Add Footprint</button>
+{activeTab === 'footprints' && (
+  <div className="grid gap-6">
+    <div className="grid gap-3">
+      <h2 className="font-semibold">Add Footprint</h2>
+      <input className={inputClass} placeholder="Footprint name e.g. RMR" value={newFootprint.name} onChange={e => setNewFootprint({ ...newFootprint, name: e.target.value })} />
+      <input className={inputClass} placeholder="Description (optional)" value={newFootprint.description} onChange={e => setNewFootprint({ ...newFootprint, description: e.target.value })} />
+      <button onClick={addFootprint} className={btnClass}>Add Footprint</button>
+    </div>
+
+    <div>
+      <h2 className="font-semibold mb-3">Existing Footprints</h2>
+      {footprints.length === 0 ? (
+        <p className="text-sm text-gray-400">No footprints added yet.</p>
+      ) : (
+        <div className="grid gap-2">
+          {footprints.map(f => (
+            <div key={f.id} className="border rounded p-3">
+              <div className="font-medium">{f.name}</div>
+              {f.description && <div className="text-sm text-gray-500 mt-0.5">{f.description}</div>}
+            </div>
+          ))}
         </div>
       )}
+    </div>
+  </div>
+)}
 
       {/* OPTICS */}
       {activeTab === 'optics' && (
