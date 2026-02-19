@@ -32,3 +32,25 @@ export async function POST(request: Request) {
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
   return NextResponse.json({ success: true })
 }
+
+export async function PATCH(request: Request) {
+  const cookieStore = await cookies()
+  const isAuthenticated = cookieStore.get('admin_auth')?.value === 'true'
+  if (!isAuthenticated) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+
+  const { table, id, data } = await request.json()
+  const { error } = await supabaseAdmin.from(table).update(data).eq('id', id)
+  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+  return NextResponse.json({ success: true })
+}
+
+export async function DELETE(request: Request) {
+  const cookieStore = await cookies()
+  const isAuthenticated = cookieStore.get('admin_auth')?.value === 'true'
+  if (!isAuthenticated) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+
+  const { table, id } = await request.json()
+  const { error } = await supabaseAdmin.from(table).delete().eq('id', id)
+  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+  return NextResponse.json({ success: true })
+}

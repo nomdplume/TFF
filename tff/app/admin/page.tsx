@@ -22,6 +22,7 @@ export default function AdminPage() {
   })
 
   const [newFootprint, setNewFootprint] = useState({ name: '', description: '' })
+  const [editingFootprint, setEditingFootprint] = useState<{ id: number; name: string; description: string } | null>(null)
 
   const [newOptic, setNewOptic] = useState({
     name: '', manufacturer: '', footprint_id: '', msrp: '', affiliate_url: '', notes: ''
@@ -78,7 +79,6 @@ export default function AdminPage() {
       showMessage('Please select at least 2 footprints for a multi-cut model', 'error'); return
     }
 
-    // Insert the model first to get its ID
     const res = await fetch('/api/admin/data', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -99,7 +99,6 @@ export default function AdminPage() {
 
     const modelId = json.id
 
-    // Link footprints if single or multi
     if (newModel.fit_type !== 'plate_based' && newModel.footprint_ids.length > 0) {
       for (const fid of newModel.footprint_ids) {
         await post('model_footprints', { model_id: modelId, footprint_id: Number(fid) })
@@ -135,6 +134,35 @@ export default function AdminPage() {
     if (!ok) return
     showMessage('Footprint added successfully')
     setNewFootprint({ name: '', description: '' })
+    supabase.from('footprints').select('*').order('name').then(({ data }) => { if (data) setFootprints(data) })
+  }
+
+  const deleteFootprint = async (id: number) => {
+    if (!confirm('Delete this footprint? This may affect linked models and optics.')) return
+    const res = await fetch('/api/admin/data', {
+      method: 'DELETE',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ table: 'footprints', id })
+    })
+    if (!res.ok) { showMessage('Error deleting footprint', 'error'); return }
+    showMessage('Footprint deleted')
+    supabase.from('footprints').select('*').order('name').then(({ data }) => { if (data) setFootprints(data) })
+  }
+
+  const saveFootprint = async () => {
+    if (!editingFootprint || !editingFootprint.name.trim()) return
+    const res = await fetch('/api/admin/data', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        table: 'footprints',
+        id: editingFootprint.id,
+        data: { name: editingFootprint.name.trim(), description: editingFootprint.description.trim() || null }
+      })
+    })
+    if (!res.ok) { showMessage('Error updating footprint', 'error'); return }
+    showMessage('Footprint updated')
+    setEditingFootprint(null)
     supabase.from('footprints').select('*').order('name').then(({ data }) => { if (data) setFootprints(data) })
   }
 
@@ -290,32 +318,69 @@ export default function AdminPage() {
       )}
 
       {/* FOOTPRINTS */}
-{activeTab === 'footprints' && (
-  <div className="grid gap-6">
-    <div className="grid gap-3">
-      <h2 className="font-semibold">Add Footprint</h2>
-      <input className={inputClass} placeholder="Footprint name e.g. RMR" value={newFootprint.name} onChange={e => setNewFootprint({ ...newFootprint, name: e.target.value })} />
-      <input className={inputClass} placeholder="Description (optional)" value={newFootprint.description} onChange={e => setNewFootprint({ ...newFootprint, description: e.target.value })} />
-      <button onClick={addFootprint} className={btnClass}>Add Footprint</button>
-    </div>
+      {activeTab === 'footprints' && (
+        <div className="grid gap-6">
+          <div className="grid gap-3">
+            <h2 className="font-semibold">Add Footprint</h2>
+            <input className={inputClass} placeholder="Footprint name e.g. RMR" value={newFootprint.name} onChange={e => setNewFootprint({ ...newFootprint, name: e.target.value })} />
+            <input className={inputClass} placeholder="Description (optional)" value={newFootprint.description} onChange={e => setNewFootprint({ ...newFootprint, description: e.target.value })} />
+            <button onClick={addFootprint} className={btnClass}>Add Footprint</button>
+          </div>
 
-    <div>
-      <h2 className="font-semibold mb-3">Existing Footprints</h2>
-      {footprints.length === 0 ? (
-        <p className="text-sm text-gray-400">No footprints added yet.</p>
-      ) : (
-        <div className="grid gap-2">
-          {footprints.map(f => (
-            <div key={f.id} className="border rounded p-3">
-              <div className="font-medium">{f.name}</div>
-              {f.description && <div className="text-sm text-gray-500 mt-0.5">{f.description}</div>}
-            </div>
-          ))}
+          <div>
+            <h2 className="font-semibold mb-3">Existing Footprints</h2>
+            {footprints.length === 0 ? (
+              <p className="text-sm text-gray-400">No footprints added yet.</p>
+            ) : (
+              <div className="grid gap-2">
+                {footprints.map(f => (
+                  <div key={f.id} className="border rounded p-3">
+                    {editingFootprint?.id === f.id ? (
+                      <div className="grid gap-2">
+                        <input
+                          className={inputClass}
+                          value={editingFootprint.name}
+                          onChange={e => setEditingFootprint({ ...editingFootprint, name: e.target.value })}
+                        />
+                        <input
+                          className={inputClass}
+                          value={editingFootprint.description}
+                          onChange={e => setEditingFootprint({ ...editingFootprint, description: e.target.value })}
+                        />
+                        <div className="flex gap-2">
+                          <button onClick={saveFootprint} className="flex-1 bg-black text-white rounded p-2 text-sm hover:bg-gray-800 transition-colors">Save</button>
+                          <button onClick={() => setEditingFootprint(null)} className="flex-1 bg-gray-100 rounded p-2 text-sm hover:bg-gray-200 transition-colors">Cancel</button>
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="flex items-start justify-between gap-4">
+                        <div>
+                          <div className="font-medium">{f.name}</div>
+                          {f.description && <div className="text-sm text-gray-500 mt-0.5">{f.description}</div>}
+                        </div>
+                        <div className="flex gap-2 shrink-0">
+                          <button
+                            onClick={() => setEditingFootprint({ id: f.id, name: f.name, description: f.description || '' })}
+                            className="text-sm px-3 py-1 rounded bg-gray-100 hover:bg-gray-200 transition-colors"
+                          >
+                            Edit
+                          </button>
+                          <button
+                            onClick={() => deleteFootprint(f.id)}
+                            className="text-sm px-3 py-1 rounded bg-red-50 text-red-600 hover:bg-red-100 transition-colors"
+                          >
+                            Delete
+                          </button>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
         </div>
       )}
-    </div>
-  </div>
-)}
 
       {/* OPTICS */}
       {activeTab === 'optics' && (
