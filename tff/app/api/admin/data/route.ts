@@ -15,13 +15,20 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
 
-  const { table, data } = await request.json()
+  const { table, data, returning } = await request.json()
 
-  const { error } = await supabaseAdmin.from(table).insert(data)
+  if (returning) {
+    const { data: inserted, error } = await supabaseAdmin
+      .from(table)
+      .insert(data)
+      .select()
+      .single()
 
-  if (error) {
-    return NextResponse.json({ error: error.message }, { status: 500 })
+    if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+    return NextResponse.json(inserted)
   }
 
+  const { error } = await supabaseAdmin.from(table).insert(data)
+  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
   return NextResponse.json({ success: true })
 }

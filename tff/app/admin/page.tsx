@@ -6,40 +6,39 @@ import { supabase } from '../lib/supabase'
 type Make = { id: number; name: string }
 type Model = { id: number; name: string; make_id: number }
 type Footprint = { id: number; name: string; description: string }
-type Optic = { id: number; name: string; manufacturer: string }
 
 export default function AdminPage() {
   const [makes, setMakes] = useState<Make[]>([])
   const [models, setModels] = useState<Model[]>([])
   const [footprints, setFootprints] = useState<Footprint[]>([])
-  const [optics, setOptics] = useState<Optic[]>([])
   const [activeTab, setActiveTab] = useState('makes')
+  const [message, setMessage] = useState({ text: '', type: 'success' })
 
   const [newMake, setNewMake] = useState('')
-  const [newModel, setNewModel] = useState({ name: '', make_id: '', fit_type: 'single', notes: '' })
+
+  const [newModel, setNewModel] = useState({
+    name: '', make_id: '', fit_type: 'single', notes: '',
+    footprint_ids: [] as string[]
+  })
+
   const [newFootprint, setNewFootprint] = useState({ name: '', description: '' })
-  const [newOptic, setNewOptic] = useState({ name: '', manufacturer: '', msrp: '', notes: '', affiliate_url: '' })
-  const [newModelFootprint, setNewModelFootprint] = useState({ make_id: '', model_id: '', footprint_id: '' })
-  const [newOpticFootprint, setNewOpticFootprint] = useState({ optic_id: '', footprint_id: '' })
-  const [newPlate, setNewPlate] = useState({ make_id: '', model_id: '', name: '', footprint_id: '', purchase_url: '', notes: '' })
-  const [filteredModels, setFilteredModels] = useState<Model[]>([])
+
+  const [newOptic, setNewOptic] = useState({
+    name: '', manufacturer: '', footprint_id: '', msrp: '', affiliate_url: '', notes: ''
+  })
+
+  const [newPlate, setNewPlate] = useState({
+    make_id: '', model_id: '', name: '', footprint_id: '', purchase_url: '', notes: ''
+  })
+
   const [plateModels, setPlateModels] = useState<Model[]>([])
-  const [message, setMessage] = useState({ text: '', type: 'success' })
 
   useEffect(() => {
     supabase.from('makes').select('*').order('name').then(({ data }) => { if (data) setMakes(data) })
     supabase.from('footprints').select('*').order('name').then(({ data }) => { if (data) setFootprints(data) })
     supabase.from('models').select('*').order('name').then(({ data }) => { if (data) setModels(data) })
-    supabase.from('optics').select('id, name, manufacturer').order('name').then(({ data }) => { if (data) setOptics(data) })
   }, [])
 
-  // Filter models for "link model" tab when make is selected
-  useEffect(() => {
-    if (!newModelFootprint.make_id) { setFilteredModels([]); return }
-    setFilteredModels(models.filter(m => m.make_id === Number(newModelFootprint.make_id)))
-  }, [newModelFootprint.make_id, models])
-
-  // Filter models for "plates" tab when make is selected
   useEffect(() => {
     if (!newPlate.make_id) { setPlateModels([]); return }
     setPlateModels(models.filter(m => m.make_id === Number(newPlate.make_id)))
@@ -57,8 +56,8 @@ export default function AdminPage() {
       body: JSON.stringify({ table, data })
     })
     const json = await res.json()
-    if (!res.ok) { showMessage('Error: ' + json.error, 'error'); return false }
-    return true
+    if (!res.ok) { showMessage('Error: ' + json.error, 'error'); return null }
+    return json
   }
 
   const addMake = async () => {
@@ -72,16 +71,59 @@ export default function AdminPage() {
 
   const addModel = async () => {
     if (!newModel.name.trim() || !newModel.make_id) return
-    const ok = await post('models', {
-      name: newModel.name.trim(),
-      make_id: Number(newModel.make_id),
-      fit_type: newModel.fit_type,
-      notes: newModel.notes.trim() || null
+    if (newModel.fit_type === 'single' && newModel.footprint_ids.length === 0) {
+      showMessage('Please select a footprint', 'error'); return
+    }
+    if (newModel.fit_type === 'multi' && newModel.footprint_ids.length < 2) {
+      showMessage('Please select at least 2 footprints for a multi-cut model', 'error'); return
+    }
+
+    // Insert the model first to get its ID
+    const res = await fetch('/api/admin/data', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        table: 'models',
+        data: {
+          name: newModel.name.trim(),
+          make_id: Number(newModel.make_id),
+          fit_type: newModel.fit_type,
+          notes: newModel.notes.trim() || null
+        },
+        returning: true
+      })
     })
-    if (!ok) return
+
+    const json = await res.json()
+    if (!res.ok) { showMessage('Error: ' + json.error, 'error'); return }
+
+    const modelId = json.id
+
+    // Link footprints if single or multi
+    if (newModel.fit_type !== 'plate_based' && newModel.footprint_ids.length > 0) {
+      for (const fid of newModel.footprint_ids) {
+        await post('model_footprints', { model_id: modelId, footprint_id: Number(fid) })
+      }
+    }
+
     showMessage('Model added successfully')
-    setNewModel({ name: '', make_id: '', fit_type: 'single', notes: '' })
+    setNewModel({ name: '', make_id: '', fit_type: 'single', notes: '', footprint_ids: [] })
     supabase.from('models').select('*').order('name').then(({ data }) => { if (data) setModels(data) })
+  }
+
+  const toggleFootprint = (id: string) => {
+    setNewModel(prev => {
+      const already = prev.footprint_ids.includes(id)
+      if (prev.fit_type === 'single') {
+        return { ...prev, footprint_ids: already ? [] : [id] }
+      }
+      return {
+        ...prev,
+        footprint_ids: already
+          ? prev.footprint_ids.filter(f => f !== id)
+          : [...prev.footprint_ids, id]
+      }
+    })
   }
 
   const addFootprint = async () => {
@@ -97,44 +139,42 @@ export default function AdminPage() {
   }
 
   const addOptic = async () => {
-    if (!newOptic.name.trim() || !newOptic.manufacturer.trim()) return
-    const ok = await post('optics', {
-      name: newOptic.name.trim(),
-      manufacturer: newOptic.manufacturer.trim(),
-      msrp: newOptic.msrp ? Number(newOptic.msrp) : null,
-      notes: newOptic.notes.trim() || null,
-      affiliate_url: newOptic.affiliate_url.trim() || null
+    if (!newOptic.name.trim() || !newOptic.manufacturer.trim() || !newOptic.footprint_id) {
+      showMessage('Name, manufacturer and footprint are required', 'error'); return
+    }
+
+    const res = await fetch('/api/admin/data', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        table: 'optics',
+        data: {
+          name: newOptic.name.trim(),
+          manufacturer: newOptic.manufacturer.trim(),
+          msrp: newOptic.msrp ? Number(newOptic.msrp) : null,
+          notes: newOptic.notes.trim() || null,
+          affiliate_url: newOptic.affiliate_url.trim() || null
+        },
+        returning: true
+      })
     })
-    if (!ok) return
+
+    const json = await res.json()
+    if (!res.ok) { showMessage('Error: ' + json.error, 'error'); return }
+
+    await post('optic_footprints', {
+      optic_id: json.id,
+      footprint_id: Number(newOptic.footprint_id)
+    })
+
     showMessage('Optic added successfully')
-    setNewOptic({ name: '', manufacturer: '', msrp: '', notes: '', affiliate_url: '' })
-    supabase.from('optics').select('id, name, manufacturer').order('name').then(({ data }) => { if (data) setOptics(data) })
-  }
-
-  const addModelFootprint = async () => {
-    if (!newModelFootprint.model_id || !newModelFootprint.footprint_id) return
-    const ok = await post('model_footprints', {
-      model_id: Number(newModelFootprint.model_id),
-      footprint_id: Number(newModelFootprint.footprint_id)
-    })
-    if (!ok) return
-    showMessage('Model linked to footprint successfully')
-    setNewModelFootprint({ make_id: '', model_id: '', footprint_id: '' })
-  }
-
-  const addOpticFootprint = async () => {
-    if (!newOpticFootprint.optic_id || !newOpticFootprint.footprint_id) return
-    const ok = await post('optic_footprints', {
-      optic_id: Number(newOpticFootprint.optic_id),
-      footprint_id: Number(newOpticFootprint.footprint_id)
-    })
-    if (!ok) return
-    showMessage('Optic linked to footprint successfully')
-    setNewOpticFootprint({ optic_id: '', footprint_id: '' })
+    setNewOptic({ name: '', manufacturer: '', footprint_id: '', msrp: '', affiliate_url: '', notes: '' })
   }
 
   const addPlate = async () => {
-    if (!newPlate.model_id || !newPlate.name.trim() || !newPlate.footprint_id) return
+    if (!newPlate.model_id || !newPlate.name.trim() || !newPlate.footprint_id) {
+      showMessage('Model, plate name and footprint are required', 'error'); return
+    }
     const ok = await post('plates', {
       model_id: Number(newPlate.model_id),
       name: newPlate.name.trim(),
@@ -147,8 +187,7 @@ export default function AdminPage() {
     setNewPlate({ make_id: '', model_id: '', name: '', footprint_id: '', purchase_url: '', notes: '' })
   }
 
-  const tabs = ['makes', 'models', 'footprints', 'optics', 'link model', 'link optic', 'plates']
-
+  const tabs = ['makes', 'models', 'footprints', 'optics', 'plates']
   const inputClass = "border rounded p-2 w-full"
   const selectClass = "border rounded p-2 w-full bg-white"
   const btnClass = "bg-black text-white rounded p-2 w-full font-medium hover:bg-gray-800 transition-colors"
@@ -175,6 +214,7 @@ export default function AdminPage() {
         ))}
       </div>
 
+      {/* MAKES */}
       {activeTab === 'makes' && (
         <div className="grid gap-3">
           <h2 className="font-semibold">Add Manufacturer</h2>
@@ -183,6 +223,7 @@ export default function AdminPage() {
         </div>
       )}
 
+      {/* MODELS */}
       {activeTab === 'models' && (
         <div className="grid gap-3">
           <h2 className="font-semibold">Add Model</h2>
@@ -193,17 +234,62 @@ export default function AdminPage() {
           <input className={inputClass} placeholder="Model name e.g. M&P 9 2.0" value={newModel.name} onChange={e => setNewModel({ ...newModel, name: e.target.value })} />
           <div>
             <label className="block text-sm font-medium mb-1">Fit Type</label>
-            <select className={selectClass} value={newModel.fit_type} onChange={e => setNewModel({ ...newModel, fit_type: e.target.value })}>
+            <select className={selectClass} value={newModel.fit_type} onChange={e => setNewModel({ ...newModel, fit_type: e.target.value, footprint_ids: [] })}>
               <option value="single">Single — one footprint cut</option>
               <option value="multi">Multi — multiple cuts milled in</option>
               <option value="plate_based">Plate-based — ships with adapter plates</option>
             </select>
           </div>
+
+          {newModel.fit_type === 'single' && (
+            <div>
+              <label className="block text-sm font-medium mb-1">Footprint</label>
+              <div className="grid gap-1">
+                {footprints.map(f => (
+                  <label key={f.id} className={`flex items-center gap-2 p-2 border rounded cursor-pointer ${newModel.footprint_ids.includes(String(f.id)) ? 'border-black bg-gray-50' : ''}`}>
+                    <input
+                      type="radio"
+                      name="single_footprint"
+                      checked={newModel.footprint_ids.includes(String(f.id))}
+                      onChange={() => toggleFootprint(String(f.id))}
+                    />
+                    {f.name}
+                  </label>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {newModel.fit_type === 'multi' && (
+            <div>
+              <label className="block text-sm font-medium mb-1">Footprints (select all that apply)</label>
+              <div className="grid gap-1">
+                {footprints.map(f => (
+                  <label key={f.id} className={`flex items-center gap-2 p-2 border rounded cursor-pointer ${newModel.footprint_ids.includes(String(f.id)) ? 'border-black bg-gray-50' : ''}`}>
+                    <input
+                      type="checkbox"
+                      checked={newModel.footprint_ids.includes(String(f.id))}
+                      onChange={() => toggleFootprint(String(f.id))}
+                    />
+                    {f.name}
+                  </label>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {newModel.fit_type === 'plate_based' && (
+            <p className="text-sm text-gray-500 bg-gray-50 rounded p-3">
+              This model uses adapter plates. After saving, go to the <strong>Plates</strong> tab to add each plate and its footprint.
+            </p>
+          )}
+
           <input className={inputClass} placeholder="Notes (optional)" value={newModel.notes} onChange={e => setNewModel({ ...newModel, notes: e.target.value })} />
           <button onClick={addModel} className={btnClass}>Add Model</button>
         </div>
       )}
 
+      {/* FOOTPRINTS */}
       {activeTab === 'footprints' && (
         <div className="grid gap-3">
           <h2 className="font-semibold">Add Footprint</h2>
@@ -213,11 +299,19 @@ export default function AdminPage() {
         </div>
       )}
 
+      {/* OPTICS */}
       {activeTab === 'optics' && (
         <div className="grid gap-3">
           <h2 className="font-semibold">Add Optic</h2>
           <input className={inputClass} placeholder="Optic name e.g. RMR Type 2" value={newOptic.name} onChange={e => setNewOptic({ ...newOptic, name: e.target.value })} />
           <input className={inputClass} placeholder="Manufacturer" value={newOptic.manufacturer} onChange={e => setNewOptic({ ...newOptic, manufacturer: e.target.value })} />
+          <div>
+            <label className="block text-sm font-medium mb-1">Footprint</label>
+            <select className={selectClass} value={newOptic.footprint_id} onChange={e => setNewOptic({ ...newOptic, footprint_id: e.target.value })}>
+              <option value="" disabled>Select footprint...</option>
+              {footprints.map(f => <option key={f.id} value={f.id}>{f.name}</option>)}
+            </select>
+          </div>
           <input className={inputClass} placeholder="MSRP (optional)" value={newOptic.msrp} onChange={e => setNewOptic({ ...newOptic, msrp: e.target.value })} />
           <input className={inputClass} placeholder="Affiliate URL (optional)" value={newOptic.affiliate_url} onChange={e => setNewOptic({ ...newOptic, affiliate_url: e.target.value })} />
           <input className={inputClass} placeholder="Notes (optional)" value={newOptic.notes} onChange={e => setNewOptic({ ...newOptic, notes: e.target.value })} />
@@ -225,41 +319,7 @@ export default function AdminPage() {
         </div>
       )}
 
-      {activeTab === 'link model' && (
-        <div className="grid gap-3">
-          <h2 className="font-semibold">Link Model to Footprint</h2>
-          <p className="text-sm text-gray-500">For Tier 1 (single) and Tier 2 (multi) guns only. Use the Plates tab for plate-based guns.</p>
-          <select className={selectClass} value={newModelFootprint.make_id} onChange={e => setNewModelFootprint({ ...newModelFootprint, make_id: e.target.value, model_id: '' })}>
-            <option value="" disabled>Select manufacturer...</option>
-            {makes.map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
-          </select>
-          <select className={selectClass} value={newModelFootprint.model_id} onChange={e => setNewModelFootprint({ ...newModelFootprint, model_id: e.target.value })} disabled={!newModelFootprint.make_id}>
-            <option value="" disabled>Select model...</option>
-            {filteredModels.map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
-          </select>
-          <select className={selectClass} value={newModelFootprint.footprint_id} onChange={e => setNewModelFootprint({ ...newModelFootprint, footprint_id: e.target.value })}>
-            <option value="" disabled>Select footprint...</option>
-            {footprints.map(f => <option key={f.id} value={f.id}>{f.name}</option>)}
-          </select>
-          <button onClick={addModelFootprint} className={btnClass}>Link Model to Footprint</button>
-        </div>
-      )}
-
-      {activeTab === 'link optic' && (
-        <div className="grid gap-3">
-          <h2 className="font-semibold">Link Optic to Footprint</h2>
-          <select className={selectClass} value={newOpticFootprint.optic_id} onChange={e => setNewOpticFootprint({ ...newOpticFootprint, optic_id: e.target.value })}>
-            <option value="" disabled>Select optic...</option>
-            {optics.map(o => <option key={o.id} value={o.id}>{o.manufacturer} — {o.name}</option>)}
-          </select>
-          <select className={selectClass} value={newOpticFootprint.footprint_id} onChange={e => setNewOpticFootprint({ ...newOpticFootprint, footprint_id: e.target.value })}>
-            <option value="" disabled>Select footprint...</option>
-            {footprints.map(f => <option key={f.id} value={f.id}>{f.name}</option>)}
-          </select>
-          <button onClick={addOpticFootprint} className={btnClass}>Link Optic to Footprint</button>
-        </div>
-      )}
-
+      {/* PLATES */}
       {activeTab === 'plates' && (
         <div className="grid gap-3">
           <h2 className="font-semibold">Add Plate</h2>
