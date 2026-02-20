@@ -7,7 +7,18 @@ import Image from 'next/image'
 
 type Make = { id: number; name: string }
 type Model = { id: number; name: string; make_id: number; fit_type: string; notes: string }
-type Optic = { id: number; name: string; manufacturer: string; msrp: number; notes: string; affiliate_url: string; image_url: string }
+type Optic = {
+  id: number
+  name: string
+  optic_make_id: number | null
+  optic_make?: { name: string }
+  sku: string | null
+  msrp: number | null
+  reticle: string | null
+  notes: string | null
+  affiliate_url: string | null
+  image_url: string | null
+}
 type Footprint = { id: number; name: string; description: string }
 type Plate = { id: number; name: string; footprint_id: number; purchase_url: string; notes: string }
 
@@ -33,10 +44,7 @@ export default function Home() {
 
   useEffect(() => {
     if (!selectedMake) return
-    setSelectedModel(null)
-    setOptics([])
-    setPlates([])
-    setSearched(false)
+    setSelectedModel(null); setOptics([]); setPlates([]); setSearched(false)
     supabase.from('models').select('*').eq('make_id', selectedMake).order('name').then(({ data }) => {
       if (data) setModels(data)
     })
@@ -44,9 +52,7 @@ export default function Home() {
 
   useEffect(() => {
     if (!selectedModel) return
-    setOptics([])
-    setPlates([])
-    setSearched(false)
+    setOptics([]); setPlates([]); setSearched(false)
     fetchResults(selectedModel)
   }, [selectedModel])
 
@@ -54,44 +60,44 @@ export default function Home() {
     setLoading(true)
 
     if (model.fit_type === 'plate_based') {
-      const { data: plateData } = await supabase
-        .from('plates').select('*').eq('model_id', model.id)
+      const { data: plateData } = await supabase.from('plates').select('*').eq('model_id', model.id)
 
       if (!plateData || plateData.length === 0) {
-        setPlates([])
-        setLoading(false)
-        setSearched(true)
-        return
+        setPlates([]); setLoading(false); setSearched(true); return
       }
 
       const enrichedPlates = await Promise.all(plateData.map(async (plate) => {
-        const { data: fpData } = await supabase
-          .from('footprints').select('*').eq('id', plate.footprint_id).single()
+        const { data: fpData } = await supabase.from('footprints').select('*').eq('id', plate.footprint_id).single()
         const { data: ofData } = await supabase
-          .from('optic_footprints').select('optics(*)').eq('footprint_id', plate.footprint_id)
-        const opticsList = ofData ? ofData.map((r: any) => r.optics) : []
+          .from('optic_footprints')
+          .select('optics(*, optic_makes(name))')
+          .eq('footprint_id', plate.footprint_id)
+        const opticsList = ofData ? ofData.map((r: any) => ({
+          ...r.optics,
+          optic_make: r.optics?.optic_makes
+        })) : []
         return { ...plate, footprint: fpData, optics: opticsList }
       }))
 
       setPlates(enrichedPlates)
 
     } else {
-      const { data: mfData } = await supabase
-        .from('model_footprints').select('footprint_id').eq('model_id', model.id)
+      const { data: mfData } = await supabase.from('model_footprints').select('footprint_id').eq('model_id', model.id)
 
       if (!mfData || mfData.length === 0) {
-        setOptics([])
-        setLoading(false)
-        setSearched(true)
-        return
+        setOptics([]); setLoading(false); setSearched(true); return
       }
 
       const enrichedFootprints = await Promise.all(mfData.map(async (mf) => {
-        const { data: fpData } = await supabase
-          .from('footprints').select('*').eq('id', mf.footprint_id).single()
+        const { data: fpData } = await supabase.from('footprints').select('*').eq('id', mf.footprint_id).single()
         const { data: ofData } = await supabase
-          .from('optic_footprints').select('optics(*)').eq('footprint_id', mf.footprint_id)
-        const opticsList = ofData ? ofData.map((r: any) => r.optics) : []
+          .from('optic_footprints')
+          .select('optics(*, optic_makes(name))')
+          .eq('footprint_id', mf.footprint_id)
+        const opticsList = ofData ? ofData.map((r: any) => ({
+          ...r.optics,
+          optic_make: r.optics?.optic_makes
+        })) : []
         return { footprint: fpData, optics: opticsList }
       }))
 
@@ -103,12 +109,60 @@ export default function Home() {
   }
 
   const handleModelSelect = (modelId: number) => {
-    const model = models.find(m => m.id === modelId) || null
-    setSelectedModel(model)
+    setSelectedModel(models.find(m => m.id === modelId) || null)
   }
+
+  const getManufacturer = (optic: Optic) => optic.optic_make?.name || '—'
 
   const hasResults = searched && (optics.length > 0 || plates.length > 0)
   const noResults = searched && optics.length === 0 && plates.length === 0
+
+  // Shared optic card for both tier 1/2 and tier 3 plate results
+  const OpticCard = ({ optic, compact = false }: { optic: Optic; compact?: boolean }) => (
+    <div className={`bg-[${compact ? '#0d1117' : '#161b22'}] border border-[${compact ? '#21262d' : '#30363d'}] rounded-xl p-${compact ? '3' : '4'} flex gap-${compact ? '3' : '4'} hover:border-[#484f58] transition-colors`}>
+      <div className={`${compact ? 'w-14 h-14' : 'w-20 h-20'} shrink-0 bg-[#21262d] rounded-lg border border-[#30363d] flex items-center justify-center overflow-hidden`}>
+        {optic.image_url ? (
+          <Image
+            src={optic.image_url}
+            alt={optic.name}
+            width={compact ? 56 : 80}
+            height={compact ? 56 : 80}
+            className="object-contain"
+          />
+        ) : (
+          <span className="text-[#484f58] text-xs text-center px-1">No image</span>
+        )}
+      </div>
+      <div className="flex-1 min-w-0">
+        <div className="flex items-start justify-between gap-3">
+          <div>
+            <div className={`font-medium text-[#e6edf3] ${compact ? 'text-sm' : ''}`}>{optic.name}</div>
+            <div className="text-sm text-[#8b949e] mt-0.5">{getManufacturer(optic)}</div>
+          </div>
+          {optic.msrp && (
+            <div className="text-sm font-semibold text-[#e6edf3] shrink-0">${optic.msrp}</div>
+          )}
+        </div>
+        <div className="flex flex-wrap gap-x-3 mt-1">
+          {optic.sku && <span className="text-xs text-[#484f58]">SKU: {optic.sku}</span>}
+          {optic.reticle && <span className="text-xs text-[#484f58]">{optic.reticle}</span>}
+        </div>
+        {optic.notes && (
+          <div className="text-sm text-[#484f58] mt-1">{optic.notes}</div>
+        )}
+        {optic.affiliate_url && (
+          <a
+            href={optic.affiliate_url}
+            target="_blank"
+            rel="noopener noreferrer"
+            className={`inline-flex items-center gap-1.5 ${compact ? 'mt-2 py-1' : 'mt-3 py-1.5'} text-sm bg-[#238636] hover:bg-[#2ea043] text-white px-3 rounded-lg transition-colors font-medium`}
+          >
+            Buy Now →
+          </a>
+        )}
+      </div>
+    </div>
+  )
 
   return (
     <div className="min-h-screen bg-[#0d1117] text-[#e6edf3] font-[family-name:var(--font-dm-sans)]">
@@ -118,7 +172,6 @@ export default function Home() {
         <div className="max-w-5xl mx-auto px-6 py-4 flex items-center justify-between">
           <div className="flex items-center gap-3">
             <div className="w-8 h-8 bg-[#21262d] rounded flex items-center justify-center text-xs text-[#484f58]">
-              {/* Logo placeholder — replace with <Image> once logo.png is ready */}
               TFF
             </div>
             <span className="font-[family-name:var(--font-syne)] font-bold text-[#e6edf3] text-lg tracking-tight">
@@ -207,9 +260,7 @@ export default function Home() {
         {!loading && searched && selectedModel?.fit_type !== 'plate_based' && optics.length > 0 && (
           <div>
             <div className="flex items-center gap-3 mb-5">
-              <h2 className="font-[family-name:var(--font-syne)] font-semibold text-[#e6edf3]">
-                Compatible Optics
-              </h2>
+              <h2 className="font-[family-name:var(--font-syne)] font-semibold text-[#e6edf3]">Compatible Optics</h2>
               <span className="text-xs bg-[#21262d] text-[#8b949e] border border-[#30363d] rounded-full px-2.5 py-0.5">
                 {optics.reduce((acc, g) => acc + g.optics.length, 0)} results
               </span>
@@ -217,58 +268,15 @@ export default function Home() {
             <div className="grid gap-8">
               {optics.map(({ footprint, optics: opticsList }) => (
                 <div key={footprint?.id}>
-                  {optics.length > 1 && (
-                    <div className="flex items-center gap-3 mb-3">
-                      <span className="text-xs font-semibold uppercase tracking-widest text-[#3fb950] font-[family-name:var(--font-syne)]">
-                        {footprint?.name} footprint
-                      </span>
-                      <div className="flex-1 h-px bg-[#21262d]" />
-                    </div>
-                  )}
-                  {optics.length === 1 && (
-                    <div className="flex items-center gap-3 mb-3">
-                      <span className="text-xs font-semibold uppercase tracking-widest text-[#3fb950] font-[family-name:var(--font-syne)]">
-                        {footprint?.name} footprint
-                      </span>
-                      <div className="flex-1 h-px bg-[#21262d]" />
-                    </div>
-                  )}
+                  <div className="flex items-center gap-3 mb-3">
+                    <span className="text-xs font-semibold uppercase tracking-widest text-[#3fb950] font-[family-name:var(--font-syne)]">
+                      {footprint?.name} footprint
+                    </span>
+                    <div className="flex-1 h-px bg-[#21262d]" />
+                  </div>
                   <div className="grid gap-3">
                     {opticsList.map((optic) => (
-                      <div key={optic.id} className="bg-[#161b22] border border-[#30363d] rounded-xl p-4 flex gap-4 hover:border-[#484f58] transition-colors">
-                        {/* Image placeholder */}
-                        <div className="w-20 h-20 shrink-0 bg-[#21262d] rounded-lg border border-[#30363d] flex items-center justify-center">
-                          {optic.image_url ? (
-                            <Image src={optic.image_url} alt={optic.name} width={80} height={80} className="object-contain rounded-lg" />
-                          ) : (
-                            <span className="text-[#484f58] text-xs text-center px-1">No image</span>
-                          )}
-                        </div>
-                        <div className="flex-1 min-w-0">
-                          <div className="flex items-start justify-between gap-3">
-                            <div>
-                              <div className="font-medium text-[#e6edf3]">{optic.name}</div>
-                              <div className="text-sm text-[#8b949e] mt-0.5">{optic.manufacturer}</div>
-                            </div>
-                            {optic.msrp && (
-                              <div className="text-sm font-semibold text-[#e6edf3] shrink-0">${optic.msrp}</div>
-                            )}
-                          </div>
-                          {optic.notes && (
-                            <div className="text-sm text-[#484f58] mt-1.5">{optic.notes}</div>
-                          )}
-                          {optic.affiliate_url && (
-                            
-                              <a href={optic.affiliate_url}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              className="inline-flex items-center gap-1.5 mt-3 text-sm bg-[#238636] hover:bg-[#2ea043] text-white px-3 py-1.5 rounded-lg transition-colors font-medium"
-                            >
-                              Buy Now →
-                            </a>
-                          )}
-                        </div>
-                      </div>
+                      <OpticCard key={optic.id} optic={optic} />
                     ))}
                   </div>
                 </div>
@@ -307,8 +315,8 @@ export default function Home() {
                         {plate.notes && <div className="text-sm text-[#484f58] mt-1">{plate.notes}</div>}
                       </div>
                       {plate.purchase_url && (
-                        
-                          <a href={plate.purchase_url}
+                        <a
+                          href={plate.purchase_url}
                           target="_blank"
                           rel="noopener noreferrer"
                           className="shrink-0 text-sm bg-[#21262d] hover:bg-[#30363d] text-[#c9d1d9] border border-[#30363d] px-3 py-1.5 rounded-lg transition-colors"
@@ -323,34 +331,7 @@ export default function Home() {
                       ) : (
                         <div className="grid gap-3">
                           {plate.optics.map((optic) => (
-                            <div key={optic.id} className="bg-[#0d1117] border border-[#21262d] rounded-lg p-3 flex gap-3 hover:border-[#30363d] transition-colors">
-                              <div className="w-14 h-14 shrink-0 bg-[#161b22] rounded border border-[#30363d] flex items-center justify-center">
-                                {optic.image_url ? (
-                                  <Image src={optic.image_url} alt={optic.name} width={56} height={56} className="object-contain rounded" />
-                                ) : (
-                                  <span className="text-[#484f58] text-xs text-center px-1">No image</span>
-                                )}
-                              </div>
-                              <div className="flex-1 min-w-0">
-                                <div className="flex items-start justify-between gap-2">
-                                  <div>
-                                    <div className="font-medium text-sm text-[#e6edf3]">{optic.name}</div>
-                                    <div className="text-sm text-[#8b949e]">{optic.manufacturer}</div>
-                                  </div>
-                                  {optic.msrp && <div className="text-sm font-semibold text-[#e6edf3] shrink-0">${optic.msrp}</div>}
-                                </div>
-                                {optic.affiliate_url && (
-                                  
-                                    <a href={optic.affiliate_url}
-                                    target="_blank"
-                                    rel="noopener noreferrer"
-                                    className="inline-flex items-center gap-1.5 mt-2 text-sm bg-[#238636] hover:bg-[#2ea043] text-white px-3 py-1 rounded-lg transition-colors font-medium"
-                                  >
-                                    Buy Now →
-                                  </a>
-                                )}
-                              </div>
-                            </div>
+                            <OpticCard key={optic.id} optic={optic} compact />
                           ))}
                         </div>
                       )}
@@ -371,21 +352,9 @@ export default function Home() {
           </h2>
           <div className="grid md:grid-cols-3 gap-8">
             {[
-              {
-                step: '01',
-                title: 'Select Your Handgun',
-                body: 'Choose your pistol\'s manufacturer and model from our database of optics-ready handguns.'
-              },
-              {
-                step: '02',
-                title: 'We Match the Footprint',
-                body: 'Every optics-ready slide has a mounting footprint — a specific pattern of holes and dimensions. We identify yours automatically.'
-              },
-              {
-                step: '03',
-                title: 'See Compatible Optics',
-                body: 'Browse every optic that natively fits your footprint, with pricing and direct links to purchase.'
-              }
+              { step: '01', title: 'Select Your Handgun', body: "Choose your pistol's manufacturer and model from our database of optics-ready handguns." },
+              { step: '02', title: 'We Match the Footprint', body: "Every optics-ready slide has a mounting footprint — a specific pattern of holes and dimensions. We identify yours automatically." },
+              { step: '03', title: 'See Compatible Optics', body: "Browse every optic that natively fits your footprint, with pricing and direct links to purchase." }
             ].map(({ step, title, body }) => (
               <div key={step} className="relative">
                 <div className="text-4xl font-bold font-[family-name:var(--font-syne)] text-[#21262d] mb-3">{step}</div>
@@ -398,18 +367,16 @@ export default function Home() {
       </section>
 
       {/* FOOTER */}
-        <footer className="border-t border-[#21262d]">
-          <div className="max-w-5xl mx-auto px-6 py-8 flex items-center justify-between">
-            <span className="font-[family-name:var(--font-syne)] font-bold text-[#484f58] text-sm">
-              Tactical Fit Finder
-            </span>
-            <div className="flex gap-6 text-xs text-[#484f58]">
-              <a href="/terms" className="hover:text-[#8b949e] transition-colors">Terms of Use</a>
-              <a href="/privacy" className="hover:text-[#8b949e] transition-colors">Privacy Policy</a>
-              <span>© {new Date().getFullYear()} tacticalfitfinder.com</span>
-            </div>
+      <footer className="border-t border-[#21262d]">
+        <div className="max-w-5xl mx-auto px-6 py-8 flex items-center justify-between">
+          <span className="font-[family-name:var(--font-syne)] font-bold text-[#484f58] text-sm">Tactical Fit Finder</span>
+          <div className="flex gap-6 text-xs text-[#484f58]">
+            <a href="/terms" className="hover:text-[#8b949e] transition-colors">Terms of Use</a>
+            <a href="/privacy" className="hover:text-[#8b949e] transition-colors">Privacy Policy</a>
+            <span>© {new Date().getFullYear()} tacticalfitfinder.com</span>
           </div>
-        </footer>
+        </div>
+      </footer>
 
     </div>
   )

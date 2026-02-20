@@ -1,16 +1,28 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import { supabase } from '../lib/supabase'
+import Image from 'next/image'
 
 type Make = { id: number; name: string }
 type Model = { id: number; name: string; make_id: number; fit_type: string; notes: string }
 type Footprint = { id: number; name: string; description: string }
-type Optic = { id: number; name: string; manufacturer: string; msrp: number; affiliate_url: string; notes: string }
+type OpticMake = { id: number; name: string }
+type Optic = {
+  id: number
+  name: string
+  optic_make_id: number | null
+  sku: string | null
+  msrp: number | null
+  reticle: string | null
+  image_url: string | null
+  affiliate_url: string | null
+  notes: string | null
+}
 type Plate = { id: number; model_id: number; name: string; footprint_id: number; purchase_url: string; notes: string }
 
-const ALL_EXPORT_TABLES = ['makes', 'models', 'footprints', 'optics', 'plates', 'model_footprints', 'optic_footprints']
+const ALL_EXPORT_TABLES = ['makes', 'models', 'footprints', 'optic_makes', 'optics', 'plates', 'model_footprints', 'optic_footprints']
 
 export default function AdminPage() {
   const router = useRouter()
@@ -18,35 +30,56 @@ export default function AdminPage() {
   const [makes, setMakes] = useState<Make[]>([])
   const [models, setModels] = useState<Model[]>([])
   const [footprints, setFootprints] = useState<Footprint[]>([])
+  const [opticMakes, setOpticMakes] = useState<OpticMake[]>([])
   const [optics, setOptics] = useState<Optic[]>([])
   const [plates, setPlates] = useState<Plate[]>([])
   const [activeTab, setActiveTab] = useState('makes')
   const [message, setMessage] = useState({ text: '', type: 'success' })
 
+  // --- Form state ---
   const [newMake, setNewMake] = useState('')
   const [newModel, setNewModel] = useState({ name: '', make_id: '', fit_type: 'single', notes: '', footprint_ids: [] as string[] })
   const [newFootprint, setNewFootprint] = useState({ name: '', description: '' })
-  const [newOptic, setNewOptic] = useState({ name: '', manufacturer: '', footprint_id: '', msrp: '', affiliate_url: '', notes: '' })
+  const [newOpticMake, setNewOpticMake] = useState('')
+  const [newOptic, setNewOptic] = useState({
+    name: '', optic_make_id: '', footprint_id: '', sku: '',
+    msrp: '', reticle: '', affiliate_url: '', notes: '', image_url: ''
+  })
   const [newPlate, setNewPlate] = useState({ make_id: '', model_id: '', name: '', footprint_id: '', purchase_url: '', notes: '' })
 
+  // --- Edit state ---
   const [editingMake, setEditingMake] = useState<{ id: number; name: string } | null>(null)
   const [editingModel, setEditingModel] = useState<{ id: number; name: string; make_id: number; fit_type: string; notes: string } | null>(null)
   const [editingFootprint, setEditingFootprint] = useState<{ id: number; name: string; description: string } | null>(null)
-  const [editingOptic, setEditingOptic] = useState<{ id: number; name: string; manufacturer: string; msrp: string; affiliate_url: string; notes: string } | null>(null)
+  const [editingOpticMake, setEditingOpticMake] = useState<{ id: number; name: string } | null>(null)
+  const [editingOptic, setEditingOptic] = useState<{
+    id: number; name: string; optic_make_id: number | null; sku: string;
+    msrp: string; reticle: string; affiliate_url: string; notes: string; image_url: string
+  } | null>(null)
   const [editingPlate, setEditingPlate] = useState<{ id: number; model_id: number; name: string; footprint_id: number; purchase_url: string; notes: string } | null>(null)
 
+  // --- Image upload state ---
+  const [uploadingNew, setUploadingNew] = useState(false)
+  const [uploadingEdit, setUploadingEdit] = useState(false)
+  const newImageRef = useRef<HTMLInputElement>(null)
+  const editImageRef = useRef<HTMLInputElement>(null)
+
+  // --- Other state ---
   const [plateModels, setPlateModels] = useState<Model[]>([])
   const [exportTables, setExportTables] = useState<string[]>([])
   const [exporting, setExporting] = useState(false)
 
+  // --- Refresh helpers ---
   const refreshMakes = () => supabase.from('makes').select('*').order('name').then(({ data }) => { if (data) setMakes(data) })
   const refreshModels = () => supabase.from('models').select('*').order('name').then(({ data }) => { if (data) setModels(data) })
   const refreshFootprints = () => supabase.from('footprints').select('*').order('name').then(({ data }) => { if (data) setFootprints(data) })
+  const refreshOpticMakes = () => supabase.from('optic_makes').select('*').order('name').then(({ data }) => { if (data) setOpticMakes(data) })
   const refreshOptics = () => supabase.from('optics').select('*').order('name').then(({ data }) => { if (data) setOptics(data) })
   const refreshPlates = () => supabase.from('plates').select('*').order('name').then(({ data }) => { if (data) setPlates(data) })
 
   useEffect(() => {
-    refreshMakes(); refreshModels(); refreshFootprints(); refreshOptics(); refreshPlates()
+    refreshMakes(); refreshModels(); refreshFootprints()
+    refreshOpticMakes(); refreshOptics(); refreshPlates()
   }, [])
 
   useEffect(() => {
@@ -56,7 +89,7 @@ export default function AdminPage() {
 
   const showMessage = (text: string, type = 'success') => {
     setMessage({ text, type })
-    setTimeout(() => setMessage({ text: '', type: 'success' }), 3000)
+    setTimeout(() => setMessage({ text: '', type: 'success' }), 4000)
   }
 
   const post = async (table: string, data: object) => {
@@ -91,15 +124,26 @@ export default function AdminPage() {
     return true
   }
 
+  // --- Image upload ---
+  const uploadImage = async (file: File, onSuccess: (url: string) => void, setUploading: (v: boolean) => void) => {
+    setUploading(true)
+    const fd = new FormData()
+    fd.append('file', file)
+    const res = await fetch('/api/admin/upload', { method: 'POST', body: fd })
+    const json = await res.json()
+    setUploading(false)
+    if (!res.ok) { showMessage('Upload failed: ' + json.error, 'error'); return }
+    onSuccess(json.url)
+    showMessage('Image uploaded successfully')
+  }
+
   const logout = async () => {
     await fetch('/api/admin/login', { method: 'DELETE' })
     router.push('/admin/login')
   }
 
   const toggleExportTable = (table: string) => {
-    setExportTables(prev =>
-      prev.includes(table) ? prev.filter(t => t !== table) : [...prev, table]
-    )
+    setExportTables(prev => prev.includes(table) ? prev.filter(t => t !== table) : [...prev, table])
   }
 
   const toggleAllExport = () => {
@@ -123,43 +167,37 @@ export default function AdminPage() {
       const csv = [headers.join(','), ...rows].join('\n')
       const blob = new Blob([csv], { type: 'text/csv' })
       const url = URL.createObjectURL(blob)
-      const a = document.createElement('a')
-      a.href = url
-      a.download = `${table}.csv`
-      a.click()
+      const a = document.createElement('a'); a.href = url; a.download = `${table}.csv`; a.click()
       URL.revokeObjectURL(url)
     }
     setExporting(false)
     showMessage(`Exported ${exportTables.length} table${exportTables.length > 1 ? 's' : ''}`)
   }
 
-  // --- MAKES ---
+  // ================================================================
+  // MAKES
+  // ================================================================
   const addMake = async () => {
     if (!newMake.trim()) return
     const ok = await post('makes', { name: newMake.trim() })
     if (!ok) return
-    showMessage('Make added successfully')
-    setNewMake('')
-    refreshMakes()
+    showMessage('Make added'); setNewMake(''); refreshMakes()
   }
-
   const saveMake = async () => {
     if (!editingMake || !editingMake.name.trim()) return
     const ok = await patch('makes', editingMake.id, { name: editingMake.name.trim() })
     if (!ok) return
-    showMessage('Make updated')
-    setEditingMake(null)
-    refreshMakes()
+    showMessage('Make updated'); setEditingMake(null); refreshMakes()
   }
-
   const deleteMake = async (id: number) => {
     const ok = await destroy('makes', id, 'Delete this manufacturer? This will affect all linked models.')
     if (!ok) return
-    showMessage('Make deleted')
-    refreshMakes()
+    showMessage('Make deleted'); refreshMakes()
   }
 
-  // --- MODELS ---
+  // ================================================================
+  // MODELS
+  // ================================================================
   const addModel = async () => {
     if (!newModel.name.trim() || !newModel.make_id) return
     if (newModel.fit_type === 'single' && newModel.footprint_ids.length === 0) {
@@ -168,110 +206,99 @@ export default function AdminPage() {
     if (newModel.fit_type === 'multi' && newModel.footprint_ids.length < 2) {
       showMessage('Please select at least 2 footprints for a multi-cut model', 'error'); return
     }
-
     const res = await fetch('/api/admin/data', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         table: 'models',
-        data: {
-          name: newModel.name.trim(),
-          make_id: Number(newModel.make_id),
-          fit_type: newModel.fit_type,
-          notes: newModel.notes.trim() || null
-        },
+        data: { name: newModel.name.trim(), make_id: Number(newModel.make_id), fit_type: newModel.fit_type, notes: newModel.notes.trim() || null },
         returning: true
       })
     })
-
     const json = await res.json()
     if (!res.ok) { showMessage('Error: ' + json.error, 'error'); return }
-
     if (newModel.fit_type !== 'plate_based' && newModel.footprint_ids.length > 0) {
       for (const fid of newModel.footprint_ids) {
         await post('model_footprints', { model_id: json.id, footprint_id: Number(fid) })
       }
     }
-
-    showMessage('Model added successfully')
+    showMessage('Model added')
     setNewModel({ name: '', make_id: '', fit_type: 'single', notes: '', footprint_ids: [] })
     refreshModels()
   }
-
   const saveModel = async () => {
     if (!editingModel || !editingModel.name.trim()) return
     const ok = await patch('models', editingModel.id, {
-      name: editingModel.name.trim(),
-      make_id: editingModel.make_id,
-      fit_type: editingModel.fit_type,
-      notes: editingModel.notes.trim() || null
+      name: editingModel.name.trim(), make_id: editingModel.make_id,
+      fit_type: editingModel.fit_type, notes: editingModel.notes.trim() || null
     })
     if (!ok) return
-    showMessage('Model updated')
-    setEditingModel(null)
-    refreshModels()
+    showMessage('Model updated'); setEditingModel(null); refreshModels()
   }
-
   const deleteModel = async (id: number) => {
     const ok = await destroy('models', id, 'Delete this model? This will affect all linked footprints and plates.')
     if (!ok) return
-    showMessage('Model deleted')
-    refreshModels()
+    showMessage('Model deleted'); refreshModels()
   }
-
   const toggleFootprint = (id: string) => {
     setNewModel(prev => {
       const already = prev.footprint_ids.includes(id)
-      if (prev.fit_type === 'single') {
-        return { ...prev, footprint_ids: already ? [] : [id] }
-      }
-      return {
-        ...prev,
-        footprint_ids: already
-          ? prev.footprint_ids.filter(f => f !== id)
-          : [...prev.footprint_ids, id]
-      }
+      if (prev.fit_type === 'single') return { ...prev, footprint_ids: already ? [] : [id] }
+      return { ...prev, footprint_ids: already ? prev.footprint_ids.filter(f => f !== id) : [...prev.footprint_ids, id] }
     })
   }
 
-  // --- FOOTPRINTS ---
+  // ================================================================
+  // FOOTPRINTS
+  // ================================================================
   const addFootprint = async () => {
     if (!newFootprint.name.trim()) return
-    const ok = await post('footprints', {
-      name: newFootprint.name.trim(),
-      description: newFootprint.description.trim() || null
-    })
+    const ok = await post('footprints', { name: newFootprint.name.trim(), description: newFootprint.description.trim() || null })
     if (!ok) return
-    showMessage('Footprint added successfully')
-    setNewFootprint({ name: '', description: '' })
-    refreshFootprints()
+    showMessage('Footprint added'); setNewFootprint({ name: '', description: '' }); refreshFootprints()
   }
-
   const saveFootprint = async () => {
     if (!editingFootprint || !editingFootprint.name.trim()) return
     const ok = await patch('footprints', editingFootprint.id, {
-      name: editingFootprint.name.trim(),
-      description: editingFootprint.description.trim() || null
+      name: editingFootprint.name.trim(), description: editingFootprint.description.trim() || null
     })
     if (!ok) return
-    showMessage('Footprint updated')
-    setEditingFootprint(null)
-    refreshFootprints()
+    showMessage('Footprint updated'); setEditingFootprint(null); refreshFootprints()
   }
-
   const deleteFootprint = async (id: number) => {
     const ok = await destroy('footprints', id, 'Delete this footprint? This may affect linked models and optics.')
     if (!ok) return
-    showMessage('Footprint deleted')
-    refreshFootprints()
+    showMessage('Footprint deleted'); refreshFootprints()
   }
 
-  // --- OPTICS ---
+  // ================================================================
+  // OPTIC MAKES
+  // ================================================================
+  const addOpticMake = async () => {
+    if (!newOpticMake.trim()) return
+    const ok = await post('optic_makes', { name: newOpticMake.trim() })
+    if (!ok) return
+    showMessage('Optic manufacturer added'); setNewOpticMake(''); refreshOpticMakes()
+  }
+  const saveOpticMake = async () => {
+    if (!editingOpticMake || !editingOpticMake.name.trim()) return
+    const ok = await patch('optic_makes', editingOpticMake.id, { name: editingOpticMake.name.trim() })
+    if (!ok) return
+    showMessage('Optic manufacturer updated'); setEditingOpticMake(null); refreshOpticMakes()
+  }
+  const deleteOpticMake = async (id: number) => {
+    const ok = await destroy('optic_makes', id, 'Delete this optic manufacturer? This will affect all linked optic models.')
+    if (!ok) return
+    showMessage('Optic manufacturer deleted'); refreshOpticMakes()
+  }
+
+  // ================================================================
+  // OPTIC MODELS
+  // ================================================================
   const addOptic = async () => {
-    if (!newOptic.name.trim() || !newOptic.manufacturer.trim() || !newOptic.footprint_id) {
+    if (!newOptic.name.trim() || !newOptic.optic_make_id || !newOptic.footprint_id) {
       showMessage('Name, manufacturer and footprint are required', 'error'); return
     }
-
     const res = await fetch('/api/admin/data', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -279,95 +306,88 @@ export default function AdminPage() {
         table: 'optics',
         data: {
           name: newOptic.name.trim(),
-          manufacturer: newOptic.manufacturer.trim(),
+          optic_make_id: Number(newOptic.optic_make_id),
+          sku: newOptic.sku.trim() || null,
           msrp: newOptic.msrp ? Number(newOptic.msrp) : null,
+          reticle: newOptic.reticle.trim() || null,
+          affiliate_url: newOptic.affiliate_url.trim() || null,
           notes: newOptic.notes.trim() || null,
-          affiliate_url: newOptic.affiliate_url.trim() || null
+          image_url: newOptic.image_url || null
         },
         returning: true
       })
     })
-
     const json = await res.json()
     if (!res.ok) { showMessage('Error: ' + json.error, 'error'); return }
-
-    await post('optic_footprints', {
-      optic_id: json.id,
-      footprint_id: Number(newOptic.footprint_id)
-    })
-
-    showMessage('Optic added successfully')
-    setNewOptic({ name: '', manufacturer: '', footprint_id: '', msrp: '', affiliate_url: '', notes: '' })
+    await post('optic_footprints', { optic_id: json.id, footprint_id: Number(newOptic.footprint_id) })
+    showMessage('Optic added')
+    setNewOptic({ name: '', optic_make_id: '', footprint_id: '', sku: '', msrp: '', reticle: '', affiliate_url: '', notes: '', image_url: '' })
+    if (newImageRef.current) newImageRef.current.value = ''
     refreshOptics()
   }
-
   const saveOptic = async () => {
-    if (!editingOptic || !editingOptic.name.trim() || !editingOptic.manufacturer.trim()) return
+    if (!editingOptic || !editingOptic.name.trim()) return
     const ok = await patch('optics', editingOptic.id, {
       name: editingOptic.name.trim(),
-      manufacturer: editingOptic.manufacturer.trim(),
+      optic_make_id: editingOptic.optic_make_id,
+      sku: editingOptic.sku.trim() || null,
       msrp: editingOptic.msrp ? Number(editingOptic.msrp) : null,
+      reticle: editingOptic.reticle.trim() || null,
       affiliate_url: editingOptic.affiliate_url.trim() || null,
-      notes: editingOptic.notes.trim() || null
+      notes: editingOptic.notes.trim() || null,
+      image_url: editingOptic.image_url || null
     })
     if (!ok) return
-    showMessage('Optic updated')
-    setEditingOptic(null)
-    refreshOptics()
+    showMessage('Optic updated'); setEditingOptic(null); refreshOptics()
   }
-
   const deleteOptic = async (id: number) => {
     const ok = await destroy('optics', id, 'Delete this optic? This will remove all its footprint links too.')
     if (!ok) return
-    showMessage('Optic deleted')
-    refreshOptics()
+    showMessage('Optic deleted'); refreshOptics()
   }
 
-  // --- PLATES ---
+  // ================================================================
+  // PLATES
+  // ================================================================
   const addPlate = async () => {
     if (!newPlate.model_id || !newPlate.name.trim() || !newPlate.footprint_id) {
       showMessage('Model, plate name and footprint are required', 'error'); return
     }
     const ok = await post('plates', {
-      model_id: Number(newPlate.model_id),
-      name: newPlate.name.trim(),
+      model_id: Number(newPlate.model_id), name: newPlate.name.trim(),
       footprint_id: Number(newPlate.footprint_id),
       purchase_url: newPlate.purchase_url.trim() || null,
       notes: newPlate.notes.trim() || null
     })
     if (!ok) return
-    showMessage('Plate added successfully')
+    showMessage('Plate added')
     setNewPlate({ make_id: '', model_id: '', name: '', footprint_id: '', purchase_url: '', notes: '' })
     refreshPlates()
   }
-
   const savePlate = async () => {
     if (!editingPlate || !editingPlate.name.trim()) return
     const ok = await patch('plates', editingPlate.id, {
-      name: editingPlate.name.trim(),
-      model_id: editingPlate.model_id,
+      name: editingPlate.name.trim(), model_id: editingPlate.model_id,
       footprint_id: editingPlate.footprint_id,
       purchase_url: editingPlate.purchase_url.trim() || null,
       notes: editingPlate.notes.trim() || null
     })
     if (!ok) return
-    showMessage('Plate updated')
-    setEditingPlate(null)
-    refreshPlates()
+    showMessage('Plate updated'); setEditingPlate(null); refreshPlates()
   }
-
   const deletePlate = async (id: number) => {
     const ok = await destroy('plates', id, 'Delete this plate?')
     if (!ok) return
-    showMessage('Plate deleted')
-    refreshPlates()
+    showMessage('Plate deleted'); refreshPlates()
   }
 
+  // --- Lookups ---
   const getMakeName = (id: number) => makes.find(m => m.id === id)?.name || '—'
   const getFootprintName = (id: number) => footprints.find(f => f.id === id)?.name || '—'
   const getModelName = (id: number) => models.find(m => m.id === id)?.name || '—'
+  const getOpticMakeName = (id: number | null) => id ? opticMakes.find(m => m.id === id)?.name || '—' : '—'
 
-  const tabs = ['makes', 'models', 'footprints', 'optics', 'plates']
+  const tabs = ['makes', 'models', 'footprints', 'optic makes', 'optic models', 'plates']
 
   // Dark theme classes
   const inputClass = "bg-[#1c2128] border border-[#30363d] rounded p-2 w-full text-[#e6edf3] placeholder-[#484f58] focus:outline-none focus:border-[#58a6ff] transition-colors"
@@ -376,6 +396,72 @@ export default function AdminPage() {
   const editBtnClass = "text-sm px-3 py-1 rounded bg-[#21262d] text-[#c9d1d9] hover:bg-[#30363d] border border-[#30363d] transition-colors"
   const deleteBtnClass = "text-sm px-3 py-1 rounded bg-transparent text-[#f85149] hover:bg-[#21262d] border border-[#f85149]/30 transition-colors"
   const cardClass = "border border-[#30363d] rounded p-3 bg-[#161b22]"
+
+  // Shared image upload field component logic (rendered inline below)
+  const ImageUploadField = ({
+    currentUrl,
+    uploading,
+    inputRef,
+    onFileChange,
+    onClear,
+    label = 'Product Image'
+  }: {
+    currentUrl: string
+    uploading: boolean
+    inputRef: React.RefObject<HTMLInputElement | null>
+    onFileChange: (e: React.ChangeEvent<HTMLInputElement>) => void
+    onClear: () => void
+    label?: string
+  }) => (
+    <div>
+      <label className="block text-sm font-medium mb-1 text-[#8b949e]">{label}</label>
+      {currentUrl ? (
+        <div className="flex items-center gap-3 p-2 bg-[#1c2128] border border-[#30363d] rounded">
+          <Image
+            src={currentUrl}
+            alt="Optic preview"
+            width={56}
+            height={56}
+            className="object-contain rounded border border-[#30363d] bg-[#0d1117]"
+          />
+          <div className="flex-1 min-w-0">
+            <p className="text-xs text-[#3fb950] truncate">Image uploaded</p>
+            <p className="text-xs text-[#484f58] truncate mt-0.5">{currentUrl.split('/').pop()}</p>
+          </div>
+          <button
+            type="button"
+            onClick={onClear}
+            className="text-xs text-[#f85149] hover:text-[#ff7b72] px-2 py-1 rounded hover:bg-[#21262d] transition-colors shrink-0"
+          >
+            Remove
+          </button>
+        </div>
+      ) : (
+        <div
+          onClick={() => inputRef.current?.click()}
+          className="flex items-center gap-3 p-3 bg-[#1c2128] border border-dashed border-[#30363d] rounded cursor-pointer hover:border-[#58a6ff] transition-colors"
+        >
+          {uploading ? (
+            <div className="w-4 h-4 border-2 border-[#30363d] border-t-[#3fb950] rounded-full animate-spin" />
+          ) : (
+            <svg className="w-4 h-4 text-[#484f58]" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+            </svg>
+          )}
+          <span className="text-sm text-[#8b949e]">
+            {uploading ? 'Uploading...' : 'Click to upload image (JPEG, PNG, WebP — max 2MB)'}
+          </span>
+        </div>
+      )}
+      <input
+        ref={inputRef}
+        type="file"
+        accept="image/jpeg,image/png,image/webp,image/gif"
+        className="hidden"
+        onChange={onFileChange}
+      />
+    </div>
+  )
 
   return (
     <div className="min-h-screen flex bg-[#0d1117] text-[#e6edf3] font-[family-name:var(--font-dm-sans)]">
@@ -386,10 +472,7 @@ export default function AdminPage() {
           <div className="text-xs font-semibold uppercase tracking-widest text-[#484f58] mb-4 font-[family-name:var(--font-syne)]">
             TFF Admin
           </div>
-          <button
-            onClick={logout}
-            className="w-full text-left text-sm px-3 py-2 rounded hover:bg-[#21262d] transition-colors text-[#f85149] font-medium"
-          >
+          <button onClick={logout} className="w-full text-left text-sm px-3 py-2 rounded hover:bg-[#21262d] transition-colors text-[#f85149] font-medium">
             Log out
           </button>
         </div>
@@ -400,23 +483,13 @@ export default function AdminPage() {
           </div>
           <div className="grid gap-1 mb-3">
             <label className="flex items-center gap-2 text-sm cursor-pointer py-1 text-[#8b949e] hover:text-[#e6edf3] transition-colors">
-              <input
-                type="checkbox"
-                checked={exportTables.length === ALL_EXPORT_TABLES.length}
-                onChange={toggleAllExport}
-                className="rounded accent-[#58a6ff]"
-              />
+              <input type="checkbox" checked={exportTables.length === ALL_EXPORT_TABLES.length} onChange={toggleAllExport} className="rounded accent-[#58a6ff]" />
               <span className="font-medium text-[#c9d1d9]">All tables</span>
             </label>
             <div className="border-t border-[#21262d] my-1" />
             {ALL_EXPORT_TABLES.map(table => (
               <label key={table} className="flex items-center gap-2 text-sm cursor-pointer py-1 text-[#8b949e] hover:text-[#e6edf3] transition-colors">
-                <input
-                  type="checkbox"
-                  checked={exportTables.includes(table)}
-                  onChange={() => toggleExportTable(table)}
-                  className="rounded accent-[#58a6ff]"
-                />
+                <input type="checkbox" checked={exportTables.includes(table)} onChange={() => toggleExportTable(table)} className="rounded accent-[#58a6ff]" />
                 {table}
               </label>
             ))}
@@ -433,9 +506,7 @@ export default function AdminPage() {
 
       {/* MAIN CONTENT */}
       <main className="flex-1 p-8 max-w-2xl">
-        <h1 className="text-2xl font-bold mb-6 font-[family-name:var(--font-syne)] text-[#e6edf3]">
-          Admin Dashboard
-        </h1>
+        <h1 className="text-2xl font-bold mb-6 font-[family-name:var(--font-syne)] text-[#e6edf3]">Admin Dashboard</h1>
 
         {message.text && (
           <div className={`rounded p-3 mb-6 text-sm border ${message.type === 'error'
@@ -445,6 +516,7 @@ export default function AdminPage() {
           </div>
         )}
 
+        {/* TABS */}
         <div className="flex gap-2 mb-6 flex-wrap">
           {tabs.map(tab => (
             <button
@@ -459,11 +531,13 @@ export default function AdminPage() {
           ))}
         </div>
 
+        {/* ============================================================ */}
         {/* MAKES */}
+        {/* ============================================================ */}
         {activeTab === 'makes' && (
           <div className="grid gap-6">
             <div className="grid gap-3">
-              <h2 className="font-semibold font-[family-name:var(--font-syne)] text-[#e6edf3]">Add Manufacturer</h2>
+              <h2 className="font-semibold font-[family-name:var(--font-syne)] text-[#e6edf3]">Add Firearm Manufacturer</h2>
               <input className={inputClass} placeholder="e.g. Walther" value={newMake} onChange={e => setNewMake(e.target.value)} />
               <button onClick={addMake} className={btnClass}>Add Make</button>
             </div>
@@ -498,11 +572,13 @@ export default function AdminPage() {
           </div>
         )}
 
+        {/* ============================================================ */}
         {/* MODELS */}
+        {/* ============================================================ */}
         {activeTab === 'models' && (
           <div className="grid gap-6">
             <div className="grid gap-3">
-              <h2 className="font-semibold font-[family-name:var(--font-syne)] text-[#e6edf3]">Add Model</h2>
+              <h2 className="font-semibold font-[family-name:var(--font-syne)] text-[#e6edf3]">Add Firearm Model</h2>
               <select className={selectClass} value={newModel.make_id} onChange={e => setNewModel({ ...newModel, make_id: e.target.value })}>
                 <option value="" disabled>Select manufacturer...</option>
                 {makes.map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
@@ -594,7 +670,9 @@ export default function AdminPage() {
           </div>
         )}
 
+        {/* ============================================================ */}
         {/* FOOTPRINTS */}
+        {/* ============================================================ */}
         {activeTab === 'footprints' && (
           <div className="grid gap-6">
             <div className="grid gap-3">
@@ -638,53 +716,204 @@ export default function AdminPage() {
           </div>
         )}
 
-        {/* OPTICS */}
-        {activeTab === 'optics' && (
+        {/* ============================================================ */}
+        {/* OPTIC MAKES */}
+        {/* ============================================================ */}
+        {activeTab === 'optic makes' && (
           <div className="grid gap-6">
             <div className="grid gap-3">
-              <h2 className="font-semibold font-[family-name:var(--font-syne)] text-[#e6edf3]">Add Optic</h2>
-              <input className={inputClass} placeholder="Optic name e.g. RMR Type 2" value={newOptic.name} onChange={e => setNewOptic({ ...newOptic, name: e.target.value })} />
-              <input className={inputClass} placeholder="Manufacturer" value={newOptic.manufacturer} onChange={e => setNewOptic({ ...newOptic, manufacturer: e.target.value })} />
+              <h2 className="font-semibold font-[family-name:var(--font-syne)] text-[#e6edf3]">Add Optic Manufacturer</h2>
+              <input
+                className={inputClass}
+                placeholder="e.g. Trijicon"
+                value={newOpticMake}
+                onChange={e => setNewOpticMake(e.target.value)}
+                onKeyDown={e => e.key === 'Enter' && addOpticMake()}
+              />
+              <button onClick={addOpticMake} className={btnClass}>Add Optic Manufacturer</button>
+            </div>
+            <div>
+              <h2 className="font-semibold mb-3 font-[family-name:var(--font-syne)] text-[#e6edf3]">Existing Optic Manufacturers</h2>
+              {opticMakes.length === 0 ? <p className="text-sm text-[#484f58]">No optic manufacturers added yet.</p> : (
+                <div className="grid gap-2">
+                  {opticMakes.map(m => (
+                    <div key={m.id} className={cardClass}>
+                      {editingOpticMake?.id === m.id ? (
+                        <div className="grid gap-2">
+                          <input className={inputClass} value={editingOpticMake.name} onChange={e => setEditingOpticMake({ ...editingOpticMake, name: e.target.value })} />
+                          <div className="flex gap-2">
+                            <button onClick={saveOpticMake} className="flex-1 bg-[#238636] text-white rounded p-2 text-sm hover:bg-[#2ea043] transition-colors">Save</button>
+                            <button onClick={() => setEditingOpticMake(null)} className="flex-1 bg-[#21262d] text-[#c9d1d9] rounded p-2 text-sm hover:bg-[#30363d] transition-colors">Cancel</button>
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="flex items-center justify-between gap-4">
+                          <div className="font-medium text-[#e6edf3]">{m.name}</div>
+                          <div className="flex gap-2 shrink-0">
+                            <button onClick={() => setEditingOpticMake({ id: m.id, name: m.name })} className={editBtnClass}>Edit</button>
+                            <button onClick={() => deleteOpticMake(m.id)} className={deleteBtnClass}>Delete</button>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* ============================================================ */}
+        {/* OPTIC MODELS */}
+        {/* ============================================================ */}
+        {activeTab === 'optic models' && (
+          <div className="grid gap-6">
+            <div className="grid gap-3">
+              <h2 className="font-semibold font-[family-name:var(--font-syne)] text-[#e6edf3]">Add Optic Model</h2>
+
+              {/* Manufacturer */}
               <div>
-                <label className="block text-sm font-medium mb-1 text-[#8b949e]">Footprint</label>
+                <label className="block text-sm font-medium mb-1 text-[#8b949e]">Manufacturer <span className="text-[#f85149]">*</span></label>
+                <select className={selectClass} value={newOptic.optic_make_id} onChange={e => setNewOptic({ ...newOptic, optic_make_id: e.target.value })}>
+                  <option value="" disabled>Select optic manufacturer...</option>
+                  {opticMakes.map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
+                </select>
+              </div>
+
+              {/* Name */}
+              <div>
+                <label className="block text-sm font-medium mb-1 text-[#8b949e]">Model Name <span className="text-[#f85149]">*</span></label>
+                <input className={inputClass} placeholder="e.g. RMR Type 2" value={newOptic.name} onChange={e => setNewOptic({ ...newOptic, name: e.target.value })} />
+              </div>
+
+              {/* SKU */}
+              <div>
+                <label className="block text-sm font-medium mb-1 text-[#8b949e]">SKU</label>
+                <input className={inputClass} placeholder="e.g. RMR06" value={newOptic.sku} onChange={e => setNewOptic({ ...newOptic, sku: e.target.value })} />
+              </div>
+
+              {/* Footprint */}
+              <div>
+                <label className="block text-sm font-medium mb-1 text-[#8b949e]">Footprint <span className="text-[#f85149]">*</span></label>
                 <select className={selectClass} value={newOptic.footprint_id} onChange={e => setNewOptic({ ...newOptic, footprint_id: e.target.value })}>
                   <option value="" disabled>Select footprint...</option>
                   {footprints.map(f => <option key={f.id} value={f.id}>{f.name}</option>)}
                 </select>
               </div>
-              <input className={inputClass} placeholder="MSRP (optional)" value={newOptic.msrp} onChange={e => setNewOptic({ ...newOptic, msrp: e.target.value })} />
-              <input className={inputClass} placeholder="Affiliate URL (optional)" value={newOptic.affiliate_url} onChange={e => setNewOptic({ ...newOptic, affiliate_url: e.target.value })} />
-              <input className={inputClass} placeholder="Notes (optional)" value={newOptic.notes} onChange={e => setNewOptic({ ...newOptic, notes: e.target.value })} />
-              <button onClick={addOptic} className={btnClass}>Add Optic</button>
+
+              {/* MSRP + Reticle side by side */}
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-sm font-medium mb-1 text-[#8b949e]">MSRP ($)</label>
+                  <input className={inputClass} placeholder="e.g. 699" type="number" min="0" step="0.01" value={newOptic.msrp} onChange={e => setNewOptic({ ...newOptic, msrp: e.target.value })} />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium mb-1 text-[#8b949e]">Reticle / MOA</label>
+                  <input className={inputClass} placeholder="e.g. 3.25 MOA Dot" value={newOptic.reticle} onChange={e => setNewOptic({ ...newOptic, reticle: e.target.value })} />
+                </div>
+              </div>
+
+              {/* Product URL */}
+              <div>
+                <label className="block text-sm font-medium mb-1 text-[#8b949e]">Product / Affiliate URL</label>
+                <input className={inputClass} placeholder="https://..." value={newOptic.affiliate_url} onChange={e => setNewOptic({ ...newOptic, affiliate_url: e.target.value })} />
+              </div>
+
+              {/* Notes */}
+              <div>
+                <label className="block text-sm font-medium mb-1 text-[#8b949e]">Notes</label>
+                <input className={inputClass} placeholder="Optional notes" value={newOptic.notes} onChange={e => setNewOptic({ ...newOptic, notes: e.target.value })} />
+              </div>
+
+              {/* Image upload */}
+              <ImageUploadField
+                currentUrl={newOptic.image_url}
+                uploading={uploadingNew}
+                inputRef={newImageRef}
+                onFileChange={e => {
+                  const file = e.target.files?.[0]
+                  if (file) uploadImage(file, url => setNewOptic(prev => ({ ...prev, image_url: url })), setUploadingNew)
+                }}
+                onClear={() => { setNewOptic(prev => ({ ...prev, image_url: '' })); if (newImageRef.current) newImageRef.current.value = '' }}
+              />
+
+              <button onClick={addOptic} className={btnClass} disabled={uploadingNew}>
+                {uploadingNew ? 'Uploading image...' : 'Add Optic Model'}
+              </button>
             </div>
+
+            {/* Existing optics list */}
             <div>
-              <h2 className="font-semibold mb-3 font-[family-name:var(--font-syne)] text-[#e6edf3]">Existing Optics</h2>
-              {optics.length === 0 ? <p className="text-sm text-[#484f58]">No optics added yet.</p> : (
+              <h2 className="font-semibold mb-3 font-[family-name:var(--font-syne)] text-[#e6edf3]">Existing Optic Models</h2>
+              {optics.length === 0 ? <p className="text-sm text-[#484f58]">No optic models added yet.</p> : (
                 <div className="grid gap-2">
                   {optics.map(o => (
                     <div key={o.id} className={cardClass}>
                       {editingOptic?.id === o.id ? (
                         <div className="grid gap-2">
-                          <input className={inputClass} value={editingOptic.name} onChange={e => setEditingOptic({ ...editingOptic, name: e.target.value })} />
-                          <input className={inputClass} value={editingOptic.manufacturer} onChange={e => setEditingOptic({ ...editingOptic, manufacturer: e.target.value })} />
-                          <input className={inputClass} placeholder="MSRP" value={editingOptic.msrp} onChange={e => setEditingOptic({ ...editingOptic, msrp: e.target.value })} />
-                          <input className={inputClass} placeholder="Affiliate URL" value={editingOptic.affiliate_url} onChange={e => setEditingOptic({ ...editingOptic, affiliate_url: e.target.value })} />
+                          <select className={selectClass} value={editingOptic.optic_make_id ?? ''} onChange={e => setEditingOptic({ ...editingOptic, optic_make_id: Number(e.target.value) })}>
+                            <option value="" disabled>Select manufacturer...</option>
+                            {opticMakes.map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
+                          </select>
+                          <input className={inputClass} placeholder="Model name" value={editingOptic.name} onChange={e => setEditingOptic({ ...editingOptic, name: e.target.value })} />
+                          <input className={inputClass} placeholder="SKU" value={editingOptic.sku} onChange={e => setEditingOptic({ ...editingOptic, sku: e.target.value })} />
+                          <div className="grid grid-cols-2 gap-2">
+                            <input className={inputClass} placeholder="MSRP" type="number" min="0" step="0.01" value={editingOptic.msrp} onChange={e => setEditingOptic({ ...editingOptic, msrp: e.target.value })} />
+                            <input className={inputClass} placeholder="Reticle / MOA" value={editingOptic.reticle} onChange={e => setEditingOptic({ ...editingOptic, reticle: e.target.value })} />
+                          </div>
+                          <input className={inputClass} placeholder="Product / Affiliate URL" value={editingOptic.affiliate_url} onChange={e => setEditingOptic({ ...editingOptic, affiliate_url: e.target.value })} />
                           <input className={inputClass} placeholder="Notes" value={editingOptic.notes} onChange={e => setEditingOptic({ ...editingOptic, notes: e.target.value })} />
+                          <ImageUploadField
+                            currentUrl={editingOptic.image_url}
+                            uploading={uploadingEdit}
+                            inputRef={editImageRef}
+                            onFileChange={e => {
+                              const file = e.target.files?.[0]
+                              if (file) uploadImage(file, url => setEditingOptic(prev => prev ? { ...prev, image_url: url } : prev), setUploadingEdit)
+                            }}
+                            onClear={() => { setEditingOptic(prev => prev ? { ...prev, image_url: '' } : prev); if (editImageRef.current) editImageRef.current.value = '' }}
+                          />
                           <div className="flex gap-2">
-                            <button onClick={saveOptic} className="flex-1 bg-[#238636] text-white rounded p-2 text-sm hover:bg-[#2ea043] transition-colors">Save</button>
+                            <button onClick={saveOptic} disabled={uploadingEdit} className="flex-1 bg-[#238636] text-white rounded p-2 text-sm hover:bg-[#2ea043] transition-colors disabled:opacity-50">Save</button>
                             <button onClick={() => setEditingOptic(null)} className="flex-1 bg-[#21262d] text-[#c9d1d9] rounded p-2 text-sm hover:bg-[#30363d] transition-colors">Cancel</button>
                           </div>
                         </div>
                       ) : (
                         <div className="flex items-start justify-between gap-4">
-                          <div>
-                            <div className="font-medium text-[#e6edf3]">{o.name}</div>
-                            <div className="text-sm text-[#8b949e] mt-0.5">{o.manufacturer}</div>
-                            {o.msrp && <div className="text-sm text-[#484f58] mt-0.5">${o.msrp}</div>}
-                            {o.notes && <div className="text-sm text-[#484f58] mt-0.5">{o.notes}</div>}
+                          <div className="flex gap-3 items-start">
+                            {o.image_url ? (
+                              <Image src={o.image_url} alt={o.name} width={48} height={48} className="rounded border border-[#30363d] object-contain bg-[#0d1117] shrink-0" />
+                            ) : (
+                              <div className="w-12 h-12 rounded border border-[#30363d] bg-[#0d1117] flex items-center justify-center shrink-0">
+                                <span className="text-[#484f58] text-xs">—</span>
+                              </div>
+                            )}
+                            <div>
+                              <div className="font-medium text-[#e6edf3]">{o.name}</div>
+                              <div className="text-sm text-[#8b949e] mt-0.5">{getOpticMakeName(o.optic_make_id)}</div>
+                              <div className="flex gap-3 mt-0.5 flex-wrap">
+                                {o.sku && <span className="text-xs text-[#484f58]">SKU: {o.sku}</span>}
+                                {o.msrp && <span className="text-xs text-[#484f58]">${o.msrp}</span>}
+                                {o.reticle && <span className="text-xs text-[#484f58]">{o.reticle}</span>}
+                              </div>
+                              {o.notes && <div className="text-xs text-[#484f58] mt-0.5">{o.notes}</div>}
+                            </div>
                           </div>
                           <div className="flex gap-2 shrink-0">
-                            <button onClick={() => setEditingOptic({ id: o.id, name: o.name, manufacturer: o.manufacturer, msrp: o.msrp ? String(o.msrp) : '', affiliate_url: o.affiliate_url || '', notes: o.notes || '' })} className={editBtnClass}>Edit</button>
+                            <button
+                              onClick={() => setEditingOptic({
+                                id: o.id,
+                                name: o.name,
+                                optic_make_id: o.optic_make_id,
+                                sku: o.sku || '',
+                                msrp: o.msrp ? String(o.msrp) : '',
+                                reticle: o.reticle || '',
+                                affiliate_url: o.affiliate_url || '',
+                                notes: o.notes || '',
+                                image_url: o.image_url || ''
+                              })}
+                              className={editBtnClass}
+                            >Edit</button>
                             <button onClick={() => deleteOptic(o.id)} className={deleteBtnClass}>Delete</button>
                           </div>
                         </div>
@@ -697,7 +926,9 @@ export default function AdminPage() {
           </div>
         )}
 
+        {/* ============================================================ */}
         {/* PLATES */}
+        {/* ============================================================ */}
         {activeTab === 'plates' && (
           <div className="grid gap-6">
             <div className="grid gap-3">
@@ -759,6 +990,7 @@ export default function AdminPage() {
             </div>
           </div>
         )}
+
       </main>
     </div>
   )
