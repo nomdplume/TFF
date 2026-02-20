@@ -398,16 +398,18 @@ export default function Home() {
       </section>
 
       {/* FOOTER */}
-      <footer className="border-t border-[#21262d]">
-        <div className="max-w-5xl mx-auto px-6 py-8 flex items-center justify-between">
-          <span className="font-[family-name:var(--font-syne)] font-bold text-[#484f58] text-sm">
-            Tactical Fit Finder
-          </span>
-          <span className="text-xs text-[#484f58]">
-            © {new Date().getFullYear()} tacticalfitfinder.com
-          </span>
-        </div>
-      </footer>
+        <footer className="border-t border-[#21262d]">
+          <div className="max-w-5xl mx-auto px-6 py-8 flex items-center justify-between">
+            <span className="font-[family-name:var(--font-syne)] font-bold text-[#484f58] text-sm">
+              Tactical Fit Finder
+            </span>
+            <div className="flex gap-6 text-xs text-[#484f58]">
+              <a href="/terms" className="hover:text-[#8b949e] transition-colors">Terms of Use</a>
+              <a href="/privacy" className="hover:text-[#8b949e] transition-colors">Privacy Policy</a>
+              <span>© {new Date().getFullYear()} tacticalfitfinder.com</span>
+            </div>
+          </div>
+        </footer>
 
     </div>
   )
