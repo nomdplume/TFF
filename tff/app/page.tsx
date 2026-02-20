@@ -4,7 +4,6 @@ import { useState, useEffect } from 'react'
 import { supabase } from './lib/supabase'
 import ComingSoon from './components/ComingSoon'
 
-
 type Make = { id: number; name: string }
 type Model = { id: number; name: string; make_id: number; fit_type: string; notes: string }
 type Optic = { id: number; name: string; manufacturer: string; msrp: number; notes: string; affiliate_url: string }
