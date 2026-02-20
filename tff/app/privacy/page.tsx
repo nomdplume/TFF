@@ -61,7 +61,7 @@ export default function PrivacyPolicy() {
 
           <section>
             <h2 className={`text-lg font-semibold text-[#e6edf3] mb-3 ${syne.className}`}>6. Children's Privacy</h2>
-            <p>Tactical Fit Finder is not directed at children under the age of 13 and we do not knowingly collect personal information from children.</p>
+            <p>Tactical Fit Finder is not directed at children under the age of 18 and we do not knowingly collect personal information from children.</p>
           </section>
 
           <section>
