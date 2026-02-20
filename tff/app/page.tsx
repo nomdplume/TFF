@@ -164,7 +164,7 @@ export default function Home() {
             <div className="text-sm text-[#8b949e] mt-0.5">{getManufacturer(optic)}</div>
           </div>
           {optic.msrp && (
-            <div className="text-sm font-semibold text-[#e6edf3] shrink-0">${optic.msrp}</div>
+            <div className="text-sm font-semibold text-[#e6edf3] shrink-0">MSRP: ${optic.msrp}</div>
           )}
         </div>
         <div className="flex flex-wrap gap-x-3 mt-1">
