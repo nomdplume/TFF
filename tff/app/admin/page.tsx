@@ -109,21 +109,17 @@ export default function AdminPage() {
   const exportCSV = async () => {
     if (exportTables.length === 0) { showMessage('Select at least one table to export', 'error'); return }
     setExporting(true)
-
     for (const table of exportTables) {
       const { data } = await supabase.from(table).select('*')
       if (!data || data.length === 0) continue
-
       const headers = Object.keys(data[0])
       const rows = data.map(row => headers.map(h => {
         const val = row[h]
         if (val === null || val === undefined) return ''
         const str = String(val)
         return str.includes(',') || str.includes('"') || str.includes('\n')
-          ? `"${str.replace(/"/g, '""')}"`
-          : str
+          ? `"${str.replace(/"/g, '""')}"` : str
       }).join(','))
-
       const csv = [headers.join(','), ...rows].join('\n')
       const blob = new Blob([csv], { type: 'text/csv' })
       const url = URL.createObjectURL(blob)
@@ -133,7 +129,6 @@ export default function AdminPage() {
       a.click()
       URL.revokeObjectURL(url)
     }
-
     setExporting(false)
     showMessage(`Exported ${exportTables.length} table${exportTables.length > 1 ? 's' : ''}`)
   }
@@ -373,47 +368,54 @@ export default function AdminPage() {
   const getModelName = (id: number) => models.find(m => m.id === id)?.name || '—'
 
   const tabs = ['makes', 'models', 'footprints', 'optics', 'plates']
-  const inputClass = "border rounded p-2 w-full"
-  const selectClass = "border rounded p-2 w-full bg-white"
-  const btnClass = "bg-black text-white rounded p-2 w-full font-medium hover:bg-gray-800 transition-colors"
-  const editBtnClass = "text-sm px-3 py-1 rounded bg-gray-100 hover:bg-gray-200 transition-colors"
-  const deleteBtnClass = "text-sm px-3 py-1 rounded bg-red-50 text-red-600 hover:bg-red-100 transition-colors"
+
+  // Dark theme classes
+  const inputClass = "bg-[#1c2128] border border-[#30363d] rounded p-2 w-full text-[#e6edf3] placeholder-[#484f58] focus:outline-none focus:border-[#58a6ff] transition-colors"
+  const selectClass = "bg-[#1c2128] border border-[#30363d] rounded p-2 w-full text-[#e6edf3] focus:outline-none focus:border-[#58a6ff] transition-colors"
+  const btnClass = "bg-[#238636] text-white rounded p-2 w-full font-medium hover:bg-[#2ea043] transition-colors font-[family-name:var(--font-syne)]"
+  const editBtnClass = "text-sm px-3 py-1 rounded bg-[#21262d] text-[#c9d1d9] hover:bg-[#30363d] border border-[#30363d] transition-colors"
+  const deleteBtnClass = "text-sm px-3 py-1 rounded bg-transparent text-[#f85149] hover:bg-[#21262d] border border-[#f85149]/30 transition-colors"
+  const cardClass = "border border-[#30363d] rounded p-3 bg-[#161b22]"
 
   return (
-    <div className="min-h-screen flex">
+    <div className="min-h-screen flex bg-[#0d1117] text-[#e6edf3] font-[family-name:var(--font-dm-sans)]">
 
       {/* SIDEBAR */}
-      <aside className="w-56 shrink-0 border-r bg-gray-50 p-6 flex flex-col gap-8">
+      <aside className="w-56 shrink-0 border-r border-[#21262d] bg-[#0d1117] p-6 flex flex-col gap-8">
         <div>
-          <div className="text-xs font-semibold uppercase tracking-wide text-gray-400 mb-3">Admin</div>
+          <div className="text-xs font-semibold uppercase tracking-widest text-[#484f58] mb-4 font-[family-name:var(--font-syne)]">
+            TFF Admin
+          </div>
           <button
             onClick={logout}
-            className="w-full text-left text-sm px-3 py-2 rounded hover:bg-gray-200 transition-colors text-red-600 font-medium"
+            className="w-full text-left text-sm px-3 py-2 rounded hover:bg-[#21262d] transition-colors text-[#f85149] font-medium"
           >
             Log out
           </button>
         </div>
 
         <div>
-          <div className="text-xs font-semibold uppercase tracking-wide text-gray-400 mb-3">Export CSV</div>
+          <div className="text-xs font-semibold uppercase tracking-widest text-[#484f58] mb-3 font-[family-name:var(--font-syne)]">
+            Export CSV
+          </div>
           <div className="grid gap-1 mb-3">
-            <label className="flex items-center gap-2 text-sm cursor-pointer py-1">
+            <label className="flex items-center gap-2 text-sm cursor-pointer py-1 text-[#8b949e] hover:text-[#e6edf3] transition-colors">
               <input
                 type="checkbox"
                 checked={exportTables.length === ALL_EXPORT_TABLES.length}
                 onChange={toggleAllExport}
-                className="rounded"
+                className="rounded accent-[#58a6ff]"
               />
-              <span className="font-medium">All tables</span>
+              <span className="font-medium text-[#c9d1d9]">All tables</span>
             </label>
-            <div className="border-t my-1" />
+            <div className="border-t border-[#21262d] my-1" />
             {ALL_EXPORT_TABLES.map(table => (
-              <label key={table} className="flex items-center gap-2 text-sm cursor-pointer py-1">
+              <label key={table} className="flex items-center gap-2 text-sm cursor-pointer py-1 text-[#8b949e] hover:text-[#e6edf3] transition-colors">
                 <input
                   type="checkbox"
                   checked={exportTables.includes(table)}
                   onChange={() => toggleExportTable(table)}
-                  className="rounded"
+                  className="rounded accent-[#58a6ff]"
                 />
                 {table}
               </label>
@@ -422,7 +424,7 @@ export default function AdminPage() {
           <button
             onClick={exportCSV}
             disabled={exporting || exportTables.length === 0}
-            className="w-full text-sm bg-black text-white rounded p-2 font-medium hover:bg-gray-800 transition-colors disabled:opacity-40"
+            className="w-full text-sm bg-[#21262d] text-[#c9d1d9] border border-[#30363d] rounded p-2 font-medium hover:bg-[#30363d] transition-colors disabled:opacity-40"
           >
             {exporting ? 'Exporting...' : 'Export'}
           </button>
@@ -431,10 +433,14 @@ export default function AdminPage() {
 
       {/* MAIN CONTENT */}
       <main className="flex-1 p-8 max-w-2xl">
-        <h1 className="text-2xl font-bold mb-6">Admin Dashboard</h1>
+        <h1 className="text-2xl font-bold mb-6 font-[family-name:var(--font-syne)] text-[#e6edf3]">
+          Admin Dashboard
+        </h1>
 
         {message.text && (
-          <div className={`rounded p-3 mb-6 text-sm ${message.type === 'error' ? 'bg-red-100 text-red-800' : 'bg-green-100 text-green-800'}`}>
+          <div className={`rounded p-3 mb-6 text-sm border ${message.type === 'error'
+            ? 'bg-[#ff000015] text-[#f85149] border-[#f85149]/30'
+            : 'bg-[#23863615] text-[#3fb950] border-[#238636]/30'}`}>
             {message.text}
           </div>
         )}
@@ -444,7 +450,9 @@ export default function AdminPage() {
             <button
               key={tab}
               onClick={() => setActiveTab(tab)}
-              className={`px-3 py-1 rounded text-sm font-medium capitalize ${activeTab === tab ? 'bg-black text-white' : 'bg-gray-100 hover:bg-gray-200'}`}
+              className={`px-3 py-1 rounded text-sm font-medium capitalize transition-colors font-[family-name:var(--font-syne)] ${activeTab === tab
+                ? 'bg-[#21262d] text-[#e6edf3] border border-[#58a6ff]'
+                : 'bg-[#161b22] text-[#8b949e] border border-[#30363d] hover:text-[#e6edf3] hover:border-[#484f58]'}`}
             >
               {tab}
             </button>
@@ -455,27 +463,27 @@ export default function AdminPage() {
         {activeTab === 'makes' && (
           <div className="grid gap-6">
             <div className="grid gap-3">
-              <h2 className="font-semibold">Add Manufacturer</h2>
+              <h2 className="font-semibold font-[family-name:var(--font-syne)] text-[#e6edf3]">Add Manufacturer</h2>
               <input className={inputClass} placeholder="e.g. Walther" value={newMake} onChange={e => setNewMake(e.target.value)} />
               <button onClick={addMake} className={btnClass}>Add Make</button>
             </div>
             <div>
-              <h2 className="font-semibold mb-3">Existing Manufacturers</h2>
-              {makes.length === 0 ? <p className="text-sm text-gray-400">No manufacturers added yet.</p> : (
+              <h2 className="font-semibold mb-3 font-[family-name:var(--font-syne)] text-[#e6edf3]">Existing Manufacturers</h2>
+              {makes.length === 0 ? <p className="text-sm text-[#484f58]">No manufacturers added yet.</p> : (
                 <div className="grid gap-2">
                   {makes.map(m => (
-                    <div key={m.id} className="border rounded p-3">
+                    <div key={m.id} className={cardClass}>
                       {editingMake?.id === m.id ? (
                         <div className="grid gap-2">
                           <input className={inputClass} value={editingMake.name} onChange={e => setEditingMake({ ...editingMake, name: e.target.value })} />
                           <div className="flex gap-2">
-                            <button onClick={saveMake} className="flex-1 bg-black text-white rounded p-2 text-sm hover:bg-gray-800 transition-colors">Save</button>
-                            <button onClick={() => setEditingMake(null)} className="flex-1 bg-gray-100 rounded p-2 text-sm hover:bg-gray-200 transition-colors">Cancel</button>
+                            <button onClick={saveMake} className="flex-1 bg-[#238636] text-white rounded p-2 text-sm hover:bg-[#2ea043] transition-colors">Save</button>
+                            <button onClick={() => setEditingMake(null)} className="flex-1 bg-[#21262d] text-[#c9d1d9] rounded p-2 text-sm hover:bg-[#30363d] transition-colors">Cancel</button>
                           </div>
                         </div>
                       ) : (
                         <div className="flex items-center justify-between gap-4">
-                          <div className="font-medium">{m.name}</div>
+                          <div className="font-medium text-[#e6edf3]">{m.name}</div>
                           <div className="flex gap-2 shrink-0">
                             <button onClick={() => setEditingMake({ id: m.id, name: m.name })} className={editBtnClass}>Edit</button>
                             <button onClick={() => deleteMake(m.id)} className={deleteBtnClass}>Delete</button>
@@ -494,14 +502,14 @@ export default function AdminPage() {
         {activeTab === 'models' && (
           <div className="grid gap-6">
             <div className="grid gap-3">
-              <h2 className="font-semibold">Add Model</h2>
+              <h2 className="font-semibold font-[family-name:var(--font-syne)] text-[#e6edf3]">Add Model</h2>
               <select className={selectClass} value={newModel.make_id} onChange={e => setNewModel({ ...newModel, make_id: e.target.value })}>
                 <option value="" disabled>Select manufacturer...</option>
                 {makes.map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
               </select>
               <input className={inputClass} placeholder="Model name e.g. M&P 9 2.0" value={newModel.name} onChange={e => setNewModel({ ...newModel, name: e.target.value })} />
               <div>
-                <label className="block text-sm font-medium mb-1">Fit Type</label>
+                <label className="block text-sm font-medium mb-1 text-[#8b949e]">Fit Type</label>
                 <select className={selectClass} value={newModel.fit_type} onChange={e => setNewModel({ ...newModel, fit_type: e.target.value, footprint_ids: [] })}>
                   <option value="single">Single — one footprint cut</option>
                   <option value="multi">Multi — multiple cuts milled in</option>
@@ -510,12 +518,12 @@ export default function AdminPage() {
               </div>
               {newModel.fit_type === 'single' && (
                 <div>
-                  <label className="block text-sm font-medium mb-1">Footprint</label>
+                  <label className="block text-sm font-medium mb-1 text-[#8b949e]">Footprint</label>
                   <div className="grid gap-1">
                     {footprints.map(f => (
-                      <label key={f.id} className={`flex items-center gap-2 p-2 border rounded cursor-pointer ${newModel.footprint_ids.includes(String(f.id)) ? 'border-black bg-gray-50' : ''}`}>
-                        <input type="radio" name="single_footprint" checked={newModel.footprint_ids.includes(String(f.id))} onChange={() => toggleFootprint(String(f.id))} />
-                        {f.name}
+                      <label key={f.id} className={`flex items-center gap-2 p-2 border rounded cursor-pointer transition-colors ${newModel.footprint_ids.includes(String(f.id)) ? 'border-[#58a6ff] bg-[#1c2128]' : 'border-[#30363d] hover:border-[#484f58]'}`}>
+                        <input type="radio" name="single_footprint" checked={newModel.footprint_ids.includes(String(f.id))} onChange={() => toggleFootprint(String(f.id))} className="accent-[#58a6ff]" />
+                        <span className="text-[#e6edf3]">{f.name}</span>
                       </label>
                     ))}
                   </div>
@@ -523,31 +531,31 @@ export default function AdminPage() {
               )}
               {newModel.fit_type === 'multi' && (
                 <div>
-                  <label className="block text-sm font-medium mb-1">Footprints (select all that apply)</label>
+                  <label className="block text-sm font-medium mb-1 text-[#8b949e]">Footprints (select all that apply)</label>
                   <div className="grid gap-1">
                     {footprints.map(f => (
-                      <label key={f.id} className={`flex items-center gap-2 p-2 border rounded cursor-pointer ${newModel.footprint_ids.includes(String(f.id)) ? 'border-black bg-gray-50' : ''}`}>
-                        <input type="checkbox" checked={newModel.footprint_ids.includes(String(f.id))} onChange={() => toggleFootprint(String(f.id))} />
-                        {f.name}
+                      <label key={f.id} className={`flex items-center gap-2 p-2 border rounded cursor-pointer transition-colors ${newModel.footprint_ids.includes(String(f.id)) ? 'border-[#58a6ff] bg-[#1c2128]' : 'border-[#30363d] hover:border-[#484f58]'}`}>
+                        <input type="checkbox" checked={newModel.footprint_ids.includes(String(f.id))} onChange={() => toggleFootprint(String(f.id))} className="accent-[#58a6ff]" />
+                        <span className="text-[#e6edf3]">{f.name}</span>
                       </label>
                     ))}
                   </div>
                 </div>
               )}
               {newModel.fit_type === 'plate_based' && (
-                <p className="text-sm text-gray-500 bg-gray-50 rounded p-3">
-                  This model uses adapter plates. After saving, go to the <strong>Plates</strong> tab to add each plate and its footprint.
+                <p className="text-sm text-[#8b949e] bg-[#161b22] border border-[#30363d] rounded p-3">
+                  This model uses adapter plates. After saving, go to the <strong className="text-[#e6edf3]">Plates</strong> tab to add each plate and its footprint.
                 </p>
               )}
               <input className={inputClass} placeholder="Notes (optional)" value={newModel.notes} onChange={e => setNewModel({ ...newModel, notes: e.target.value })} />
               <button onClick={addModel} className={btnClass}>Add Model</button>
             </div>
             <div>
-              <h2 className="font-semibold mb-3">Existing Models</h2>
-              {models.length === 0 ? <p className="text-sm text-gray-400">No models added yet.</p> : (
+              <h2 className="font-semibold mb-3 font-[family-name:var(--font-syne)] text-[#e6edf3]">Existing Models</h2>
+              {models.length === 0 ? <p className="text-sm text-[#484f58]">No models added yet.</p> : (
                 <div className="grid gap-2">
                   {models.map(m => (
-                    <div key={m.id} className="border rounded p-3">
+                    <div key={m.id} className={cardClass}>
                       {editingModel?.id === m.id ? (
                         <div className="grid gap-2">
                           <select className={selectClass} value={editingModel.make_id} onChange={e => setEditingModel({ ...editingModel, make_id: Number(e.target.value) })}>
@@ -561,16 +569,16 @@ export default function AdminPage() {
                           </select>
                           <input className={inputClass} placeholder="Notes (optional)" value={editingModel.notes || ''} onChange={e => setEditingModel({ ...editingModel, notes: e.target.value })} />
                           <div className="flex gap-2">
-                            <button onClick={saveModel} className="flex-1 bg-black text-white rounded p-2 text-sm hover:bg-gray-800 transition-colors">Save</button>
-                            <button onClick={() => setEditingModel(null)} className="flex-1 bg-gray-100 rounded p-2 text-sm hover:bg-gray-200 transition-colors">Cancel</button>
+                            <button onClick={saveModel} className="flex-1 bg-[#238636] text-white rounded p-2 text-sm hover:bg-[#2ea043] transition-colors">Save</button>
+                            <button onClick={() => setEditingModel(null)} className="flex-1 bg-[#21262d] text-[#c9d1d9] rounded p-2 text-sm hover:bg-[#30363d] transition-colors">Cancel</button>
                           </div>
                         </div>
                       ) : (
                         <div className="flex items-start justify-between gap-4">
                           <div>
-                            <div className="font-medium">{getMakeName(m.make_id)} {m.name}</div>
-                            <div className="text-sm text-gray-500 mt-0.5 capitalize">{m.fit_type.replace('_', ' ')}</div>
-                            {m.notes && <div className="text-sm text-gray-400 mt-0.5">{m.notes}</div>}
+                            <div className="font-medium text-[#e6edf3]">{getMakeName(m.make_id)} {m.name}</div>
+                            <div className="text-sm text-[#484f58] mt-0.5 capitalize">{m.fit_type.replace('_', ' ')}</div>
+                            {m.notes && <div className="text-sm text-[#484f58] mt-0.5">{m.notes}</div>}
                           </div>
                           <div className="flex gap-2 shrink-0">
                             <button onClick={() => setEditingModel({ id: m.id, name: m.name, make_id: m.make_id, fit_type: m.fit_type, notes: m.notes || '' })} className={editBtnClass}>Edit</button>
@@ -590,31 +598,31 @@ export default function AdminPage() {
         {activeTab === 'footprints' && (
           <div className="grid gap-6">
             <div className="grid gap-3">
-              <h2 className="font-semibold">Add Footprint</h2>
+              <h2 className="font-semibold font-[family-name:var(--font-syne)] text-[#e6edf3]">Add Footprint</h2>
               <input className={inputClass} placeholder="Footprint name e.g. RMR" value={newFootprint.name} onChange={e => setNewFootprint({ ...newFootprint, name: e.target.value })} />
               <input className={inputClass} placeholder="Description (optional)" value={newFootprint.description} onChange={e => setNewFootprint({ ...newFootprint, description: e.target.value })} />
               <button onClick={addFootprint} className={btnClass}>Add Footprint</button>
             </div>
             <div>
-              <h2 className="font-semibold mb-3">Existing Footprints</h2>
-              {footprints.length === 0 ? <p className="text-sm text-gray-400">No footprints added yet.</p> : (
+              <h2 className="font-semibold mb-3 font-[family-name:var(--font-syne)] text-[#e6edf3]">Existing Footprints</h2>
+              {footprints.length === 0 ? <p className="text-sm text-[#484f58]">No footprints added yet.</p> : (
                 <div className="grid gap-2">
                   {footprints.map(f => (
-                    <div key={f.id} className="border rounded p-3">
+                    <div key={f.id} className={cardClass}>
                       {editingFootprint?.id === f.id ? (
                         <div className="grid gap-2">
                           <input className={inputClass} value={editingFootprint.name} onChange={e => setEditingFootprint({ ...editingFootprint, name: e.target.value })} />
                           <input className={inputClass} value={editingFootprint.description} onChange={e => setEditingFootprint({ ...editingFootprint, description: e.target.value })} />
                           <div className="flex gap-2">
-                            <button onClick={saveFootprint} className="flex-1 bg-black text-white rounded p-2 text-sm hover:bg-gray-800 transition-colors">Save</button>
-                            <button onClick={() => setEditingFootprint(null)} className="flex-1 bg-gray-100 rounded p-2 text-sm hover:bg-gray-200 transition-colors">Cancel</button>
+                            <button onClick={saveFootprint} className="flex-1 bg-[#238636] text-white rounded p-2 text-sm hover:bg-[#2ea043] transition-colors">Save</button>
+                            <button onClick={() => setEditingFootprint(null)} className="flex-1 bg-[#21262d] text-[#c9d1d9] rounded p-2 text-sm hover:bg-[#30363d] transition-colors">Cancel</button>
                           </div>
                         </div>
                       ) : (
                         <div className="flex items-start justify-between gap-4">
                           <div>
-                            <div className="font-medium">{f.name}</div>
-                            {f.description && <div className="text-sm text-gray-500 mt-0.5">{f.description}</div>}
+                            <div className="font-medium text-[#e6edf3]">{f.name}</div>
+                            {f.description && <div className="text-sm text-[#8b949e] mt-0.5">{f.description}</div>}
                           </div>
                           <div className="flex gap-2 shrink-0">
                             <button onClick={() => setEditingFootprint({ id: f.id, name: f.name, description: f.description || '' })} className={editBtnClass}>Edit</button>
@@ -634,11 +642,11 @@ export default function AdminPage() {
         {activeTab === 'optics' && (
           <div className="grid gap-6">
             <div className="grid gap-3">
-              <h2 className="font-semibold">Add Optic</h2>
+              <h2 className="font-semibold font-[family-name:var(--font-syne)] text-[#e6edf3]">Add Optic</h2>
               <input className={inputClass} placeholder="Optic name e.g. RMR Type 2" value={newOptic.name} onChange={e => setNewOptic({ ...newOptic, name: e.target.value })} />
               <input className={inputClass} placeholder="Manufacturer" value={newOptic.manufacturer} onChange={e => setNewOptic({ ...newOptic, manufacturer: e.target.value })} />
               <div>
-                <label className="block text-sm font-medium mb-1">Footprint</label>
+                <label className="block text-sm font-medium mb-1 text-[#8b949e]">Footprint</label>
                 <select className={selectClass} value={newOptic.footprint_id} onChange={e => setNewOptic({ ...newOptic, footprint_id: e.target.value })}>
                   <option value="" disabled>Select footprint...</option>
                   {footprints.map(f => <option key={f.id} value={f.id}>{f.name}</option>)}
@@ -650,11 +658,11 @@ export default function AdminPage() {
               <button onClick={addOptic} className={btnClass}>Add Optic</button>
             </div>
             <div>
-              <h2 className="font-semibold mb-3">Existing Optics</h2>
-              {optics.length === 0 ? <p className="text-sm text-gray-400">No optics added yet.</p> : (
+              <h2 className="font-semibold mb-3 font-[family-name:var(--font-syne)] text-[#e6edf3]">Existing Optics</h2>
+              {optics.length === 0 ? <p className="text-sm text-[#484f58]">No optics added yet.</p> : (
                 <div className="grid gap-2">
                   {optics.map(o => (
-                    <div key={o.id} className="border rounded p-3">
+                    <div key={o.id} className={cardClass}>
                       {editingOptic?.id === o.id ? (
                         <div className="grid gap-2">
                           <input className={inputClass} value={editingOptic.name} onChange={e => setEditingOptic({ ...editingOptic, name: e.target.value })} />
@@ -663,17 +671,17 @@ export default function AdminPage() {
                           <input className={inputClass} placeholder="Affiliate URL" value={editingOptic.affiliate_url} onChange={e => setEditingOptic({ ...editingOptic, affiliate_url: e.target.value })} />
                           <input className={inputClass} placeholder="Notes" value={editingOptic.notes} onChange={e => setEditingOptic({ ...editingOptic, notes: e.target.value })} />
                           <div className="flex gap-2">
-                            <button onClick={saveOptic} className="flex-1 bg-black text-white rounded p-2 text-sm hover:bg-gray-800 transition-colors">Save</button>
-                            <button onClick={() => setEditingOptic(null)} className="flex-1 bg-gray-100 rounded p-2 text-sm hover:bg-gray-200 transition-colors">Cancel</button>
+                            <button onClick={saveOptic} className="flex-1 bg-[#238636] text-white rounded p-2 text-sm hover:bg-[#2ea043] transition-colors">Save</button>
+                            <button onClick={() => setEditingOptic(null)} className="flex-1 bg-[#21262d] text-[#c9d1d9] rounded p-2 text-sm hover:bg-[#30363d] transition-colors">Cancel</button>
                           </div>
                         </div>
                       ) : (
                         <div className="flex items-start justify-between gap-4">
                           <div>
-                            <div className="font-medium">{o.name}</div>
-                            <div className="text-sm text-gray-500 mt-0.5">{o.manufacturer}</div>
-                            {o.msrp && <div className="text-sm text-gray-400 mt-0.5">${o.msrp}</div>}
-                            {o.notes && <div className="text-sm text-gray-400 mt-0.5">{o.notes}</div>}
+                            <div className="font-medium text-[#e6edf3]">{o.name}</div>
+                            <div className="text-sm text-[#8b949e] mt-0.5">{o.manufacturer}</div>
+                            {o.msrp && <div className="text-sm text-[#484f58] mt-0.5">${o.msrp}</div>}
+                            {o.notes && <div className="text-sm text-[#484f58] mt-0.5">{o.notes}</div>}
                           </div>
                           <div className="flex gap-2 shrink-0">
                             <button onClick={() => setEditingOptic({ id: o.id, name: o.name, manufacturer: o.manufacturer, msrp: o.msrp ? String(o.msrp) : '', affiliate_url: o.affiliate_url || '', notes: o.notes || '' })} className={editBtnClass}>Edit</button>
@@ -693,8 +701,8 @@ export default function AdminPage() {
         {activeTab === 'plates' && (
           <div className="grid gap-6">
             <div className="grid gap-3">
-              <h2 className="font-semibold">Add Plate</h2>
-              <p className="text-sm text-gray-500">For plate-based guns only. Each plate presents one footprint to the optic.</p>
+              <h2 className="font-semibold font-[family-name:var(--font-syne)] text-[#e6edf3]">Add Plate</h2>
+              <p className="text-sm text-[#8b949e]">For plate-based guns only. Each plate presents one footprint to the optic.</p>
               <select className={selectClass} value={newPlate.make_id} onChange={e => setNewPlate({ ...newPlate, make_id: e.target.value, model_id: '' })}>
                 <option value="" disabled>Select manufacturer...</option>
                 {makes.map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
@@ -713,11 +721,11 @@ export default function AdminPage() {
               <button onClick={addPlate} className={btnClass}>Add Plate</button>
             </div>
             <div>
-              <h2 className="font-semibold mb-3">Existing Plates</h2>
-              {plates.length === 0 ? <p className="text-sm text-gray-400">No plates added yet.</p> : (
+              <h2 className="font-semibold mb-3 font-[family-name:var(--font-syne)] text-[#e6edf3]">Existing Plates</h2>
+              {plates.length === 0 ? <p className="text-sm text-[#484f58]">No plates added yet.</p> : (
                 <div className="grid gap-2">
                   {plates.map(p => (
-                    <div key={p.id} className="border rounded p-3">
+                    <div key={p.id} className={cardClass}>
                       {editingPlate?.id === p.id ? (
                         <div className="grid gap-2">
                           <input className={inputClass} value={editingPlate.name} onChange={e => setEditingPlate({ ...editingPlate, name: e.target.value })} />
@@ -727,16 +735,16 @@ export default function AdminPage() {
                           <input className={inputClass} placeholder="Purchase URL" value={editingPlate.purchase_url || ''} onChange={e => setEditingPlate({ ...editingPlate, purchase_url: e.target.value })} />
                           <input className={inputClass} placeholder="Notes" value={editingPlate.notes || ''} onChange={e => setEditingPlate({ ...editingPlate, notes: e.target.value })} />
                           <div className="flex gap-2">
-                            <button onClick={savePlate} className="flex-1 bg-black text-white rounded p-2 text-sm hover:bg-gray-800 transition-colors">Save</button>
-                            <button onClick={() => setEditingPlate(null)} className="flex-1 bg-gray-100 rounded p-2 text-sm hover:bg-gray-200 transition-colors">Cancel</button>
+                            <button onClick={savePlate} className="flex-1 bg-[#238636] text-white rounded p-2 text-sm hover:bg-[#2ea043] transition-colors">Save</button>
+                            <button onClick={() => setEditingPlate(null)} className="flex-1 bg-[#21262d] text-[#c9d1d9] rounded p-2 text-sm hover:bg-[#30363d] transition-colors">Cancel</button>
                           </div>
                         </div>
                       ) : (
                         <div className="flex items-start justify-between gap-4">
                           <div>
-                            <div className="font-medium">{p.name}</div>
-                            <div className="text-sm text-gray-500 mt-0.5">{getModelName(p.model_id)} — {getFootprintName(p.footprint_id)}</div>
-                            {p.notes && <div className="text-sm text-gray-400 mt-0.5">{p.notes}</div>}
+                            <div className="font-medium text-[#e6edf3]">{p.name}</div>
+                            <div className="text-sm text-[#8b949e] mt-0.5">{getModelName(p.model_id)} — {getFootprintName(p.footprint_id)}</div>
+                            {p.notes && <div className="text-sm text-[#484f58] mt-0.5">{p.notes}</div>}
                           </div>
                           <div className="flex gap-2 shrink-0">
                             <button onClick={() => setEditingPlate({ id: p.id, model_id: p.model_id, name: p.name, footprint_id: p.footprint_id, purchase_url: p.purchase_url || '', notes: p.notes || '' })} className={editBtnClass}>Edit</button>

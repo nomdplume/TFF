@@ -1,35 +1,34 @@
-import type { Metadata } from "next";
-import { Geist, Geist_Mono } from "next/font/google";
-import "./globals.css";
+import type { Metadata } from 'next'
+import { Syne, DM_Sans } from 'next/font/google'
+import './globals.css'
 
-const geistSans = Geist({
-  variable: "--font-geist-sans",
-  subsets: ["latin"],
-});
+const syne = Syne({
+  subsets: ['latin'],
+  variable: '--font-syne',
+  display: 'swap',
+})
 
-const geistMono = Geist_Mono({
-  variable: "--font-geist-mono",
-  subsets: ["latin"],
-});
+const dmSans = DM_Sans({
+  subsets: ['latin'],
+  variable: '--font-dm-sans',
+  display: 'swap',
+})
 
 export const metadata: Metadata = {
-  title: "Handgun Optics Finder",
-  description: "Find compatible optics for your handgun",
-};
+  title: 'Tactical Fit Finder',
+  description: 'Find the right optic for your handgun',
+}
 
 export default function RootLayout({
   children,
-}: Readonly<{
-  children: React.ReactNode;
-}>) {
+}: {
+  children: React.ReactNode
+}) {
   return (
-    <html lang="en">
-      <body
-        className={`${geistSans.variable} ${geistMono.variable} antialiased`}
-        style={{ backgroundColor: '#ffffff', color: '#212529' }}
-      >
+    <html lang="en" className={`${syne.variable} ${dmSans.variable}`}>
+      <body className="font-[family-name:var(--font-dm-sans)]">
         {children}
       </body>
     </html>
-  );
+  )
 }
