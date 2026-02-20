@@ -19,3 +19,9 @@ export async function POST(request: Request) {
 
   return NextResponse.json({ success: true })
 }
+
+export async function DELETE() {
+  const response = NextResponse.json({ success: true })
+  response.cookies.set('admin_auth', '', { maxAge: 0, path: '/' })
+  return response
+}

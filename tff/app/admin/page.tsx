@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
+import { useRouter } from 'next/navigation'
 import { supabase } from '../lib/supabase'
 
 type Make = { id: number; name: string }
@@ -9,7 +10,11 @@ type Footprint = { id: number; name: string; description: string }
 type Optic = { id: number; name: string; manufacturer: string; msrp: number; affiliate_url: string; notes: string }
 type Plate = { id: number; model_id: number; name: string; footprint_id: number; purchase_url: string; notes: string }
 
+const ALL_EXPORT_TABLES = ['makes', 'models', 'footprints', 'optics', 'plates', 'model_footprints', 'optic_footprints']
+
 export default function AdminPage() {
+  const router = useRouter()
+
   const [makes, setMakes] = useState<Make[]>([])
   const [models, setModels] = useState<Model[]>([])
   const [footprints, setFootprints] = useState<Footprint[]>([])
@@ -31,6 +36,8 @@ export default function AdminPage() {
   const [editingPlate, setEditingPlate] = useState<{ id: number; model_id: number; name: string; footprint_id: number; purchase_url: string; notes: string } | null>(null)
 
   const [plateModels, setPlateModels] = useState<Model[]>([])
+  const [exportTables, setExportTables] = useState<string[]>([])
+  const [exporting, setExporting] = useState(false)
 
   const refreshMakes = () => supabase.from('makes').select('*').order('name').then(({ data }) => { if (data) setMakes(data) })
   const refreshModels = () => supabase.from('models').select('*').order('name').then(({ data }) => { if (data) setModels(data) })
@@ -39,11 +46,7 @@ export default function AdminPage() {
   const refreshPlates = () => supabase.from('plates').select('*').order('name').then(({ data }) => { if (data) setPlates(data) })
 
   useEffect(() => {
-    refreshMakes()
-    refreshModels()
-    refreshFootprints()
-    refreshOptics()
-    refreshPlates()
+    refreshMakes(); refreshModels(); refreshFootprints(); refreshOptics(); refreshPlates()
   }, [])
 
   useEffect(() => {
@@ -86,6 +89,53 @@ export default function AdminPage() {
     })
     if (!res.ok) { showMessage('Error deleting record', 'error'); return false }
     return true
+  }
+
+  const logout = async () => {
+    await fetch('/api/admin/login', { method: 'DELETE' })
+    router.push('/admin/login')
+  }
+
+  const toggleExportTable = (table: string) => {
+    setExportTables(prev =>
+      prev.includes(table) ? prev.filter(t => t !== table) : [...prev, table]
+    )
+  }
+
+  const toggleAllExport = () => {
+    setExportTables(prev => prev.length === ALL_EXPORT_TABLES.length ? [] : [...ALL_EXPORT_TABLES])
+  }
+
+  const exportCSV = async () => {
+    if (exportTables.length === 0) { showMessage('Select at least one table to export', 'error'); return }
+    setExporting(true)
+
+    for (const table of exportTables) {
+      const { data } = await supabase.from(table).select('*')
+      if (!data || data.length === 0) continue
+
+      const headers = Object.keys(data[0])
+      const rows = data.map(row => headers.map(h => {
+        const val = row[h]
+        if (val === null || val === undefined) return ''
+        const str = String(val)
+        return str.includes(',') || str.includes('"') || str.includes('\n')
+          ? `"${str.replace(/"/g, '""')}"`
+          : str
+      }).join(','))
+
+      const csv = [headers.join(','), ...rows].join('\n')
+      const blob = new Blob([csv], { type: 'text/csv' })
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = `${table}.csv`
+      a.click()
+      URL.revokeObjectURL(url)
+    }
+
+    setExporting(false)
+    showMessage(`Exported ${exportTables.length} table${exportTables.length > 1 ? 's' : ''}`)
   }
 
   // --- MAKES ---
@@ -330,327 +380,378 @@ export default function AdminPage() {
   const deleteBtnClass = "text-sm px-3 py-1 rounded bg-red-50 text-red-600 hover:bg-red-100 transition-colors"
 
   return (
-    <main className="max-w-2xl mx-auto p-8">
-      <h1 className="text-2xl font-bold mb-6">Admin Dashboard</h1>
+    <div className="min-h-screen flex">
 
-      {message.text && (
-        <div className={`rounded p-3 mb-6 text-sm ${message.type === 'error' ? 'bg-red-100 text-red-800' : 'bg-green-100 text-green-800'}`}>
-          {message.text}
-        </div>
-      )}
-
-      <div className="flex gap-2 mb-6 flex-wrap">
-        {tabs.map(tab => (
+      {/* SIDEBAR */}
+      <aside className="w-56 shrink-0 border-r bg-gray-50 p-6 flex flex-col gap-8">
+        <div>
+          <div className="text-xs font-semibold uppercase tracking-wide text-gray-400 mb-3">Admin</div>
           <button
-            key={tab}
-            onClick={() => setActiveTab(tab)}
-            className={`px-3 py-1 rounded text-sm font-medium capitalize ${activeTab === tab ? 'bg-black text-white' : 'bg-gray-100 hover:bg-gray-200'}`}
+            onClick={logout}
+            className="w-full text-left text-sm px-3 py-2 rounded hover:bg-gray-200 transition-colors text-red-600 font-medium"
           >
-            {tab}
+            Log out
           </button>
-        ))}
-      </div>
-
-      {/* MAKES */}
-      {activeTab === 'makes' && (
-        <div className="grid gap-6">
-          <div className="grid gap-3">
-            <h2 className="font-semibold">Add Manufacturer</h2>
-            <input className={inputClass} placeholder="e.g. Walther" value={newMake} onChange={e => setNewMake(e.target.value)} />
-            <button onClick={addMake} className={btnClass}>Add Make</button>
-          </div>
-          <div>
-            <h2 className="font-semibold mb-3">Existing Manufacturers</h2>
-            {makes.length === 0 ? <p className="text-sm text-gray-400">No manufacturers added yet.</p> : (
-              <div className="grid gap-2">
-                {makes.map(m => (
-                  <div key={m.id} className="border rounded p-3">
-                    {editingMake?.id === m.id ? (
-                      <div className="grid gap-2">
-                        <input className={inputClass} value={editingMake.name} onChange={e => setEditingMake({ ...editingMake, name: e.target.value })} />
-                        <div className="flex gap-2">
-                          <button onClick={saveMake} className="flex-1 bg-black text-white rounded p-2 text-sm hover:bg-gray-800 transition-colors">Save</button>
-                          <button onClick={() => setEditingMake(null)} className="flex-1 bg-gray-100 rounded p-2 text-sm hover:bg-gray-200 transition-colors">Cancel</button>
-                        </div>
-                      </div>
-                    ) : (
-                      <div className="flex items-center justify-between gap-4">
-                        <div className="font-medium">{m.name}</div>
-                        <div className="flex gap-2 shrink-0">
-                          <button onClick={() => setEditingMake({ id: m.id, name: m.name })} className={editBtnClass}>Edit</button>
-                          <button onClick={() => deleteMake(m.id)} className={deleteBtnClass}>Delete</button>
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
         </div>
-      )}
 
-      {/* MODELS */}
-      {activeTab === 'models' && (
-        <div className="grid gap-6">
-          <div className="grid gap-3">
-            <h2 className="font-semibold">Add Model</h2>
-            <select className={selectClass} value={newModel.make_id} onChange={e => setNewModel({ ...newModel, make_id: e.target.value })}>
-              <option value="" disabled>Select manufacturer...</option>
-              {makes.map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
-            </select>
-            <input className={inputClass} placeholder="Model name e.g. M&P 9 2.0" value={newModel.name} onChange={e => setNewModel({ ...newModel, name: e.target.value })} />
-            <div>
-              <label className="block text-sm font-medium mb-1">Fit Type</label>
-              <select className={selectClass} value={newModel.fit_type} onChange={e => setNewModel({ ...newModel, fit_type: e.target.value, footprint_ids: [] })}>
-                <option value="single">Single — one footprint cut</option>
-                <option value="multi">Multi — multiple cuts milled in</option>
-                <option value="plate_based">Plate-based — ships with adapter plates</option>
-              </select>
+        <div>
+          <div className="text-xs font-semibold uppercase tracking-wide text-gray-400 mb-3">Export CSV</div>
+          <div className="grid gap-1 mb-3">
+            <label className="flex items-center gap-2 text-sm cursor-pointer py-1">
+              <input
+                type="checkbox"
+                checked={exportTables.length === ALL_EXPORT_TABLES.length}
+                onChange={toggleAllExport}
+                className="rounded"
+              />
+              <span className="font-medium">All tables</span>
+            </label>
+            <div className="border-t my-1" />
+            {ALL_EXPORT_TABLES.map(table => (
+              <label key={table} className="flex items-center gap-2 text-sm cursor-pointer py-1">
+                <input
+                  type="checkbox"
+                  checked={exportTables.includes(table)}
+                  onChange={() => toggleExportTable(table)}
+                  className="rounded"
+                />
+                {table}
+              </label>
+            ))}
+          </div>
+          <button
+            onClick={exportCSV}
+            disabled={exporting || exportTables.length === 0}
+            className="w-full text-sm bg-black text-white rounded p-2 font-medium hover:bg-gray-800 transition-colors disabled:opacity-40"
+          >
+            {exporting ? 'Exporting...' : 'Export'}
+          </button>
+        </div>
+      </aside>
+
+      {/* MAIN CONTENT */}
+      <main className="flex-1 p-8 max-w-2xl">
+        <h1 className="text-2xl font-bold mb-6">Admin Dashboard</h1>
+
+        {message.text && (
+          <div className={`rounded p-3 mb-6 text-sm ${message.type === 'error' ? 'bg-red-100 text-red-800' : 'bg-green-100 text-green-800'}`}>
+            {message.text}
+          </div>
+        )}
+
+        <div className="flex gap-2 mb-6 flex-wrap">
+          {tabs.map(tab => (
+            <button
+              key={tab}
+              onClick={() => setActiveTab(tab)}
+              className={`px-3 py-1 rounded text-sm font-medium capitalize ${activeTab === tab ? 'bg-black text-white' : 'bg-gray-100 hover:bg-gray-200'}`}
+            >
+              {tab}
+            </button>
+          ))}
+        </div>
+
+        {/* MAKES */}
+        {activeTab === 'makes' && (
+          <div className="grid gap-6">
+            <div className="grid gap-3">
+              <h2 className="font-semibold">Add Manufacturer</h2>
+              <input className={inputClass} placeholder="e.g. Walther" value={newMake} onChange={e => setNewMake(e.target.value)} />
+              <button onClick={addMake} className={btnClass}>Add Make</button>
             </div>
-            {newModel.fit_type === 'single' && (
+            <div>
+              <h2 className="font-semibold mb-3">Existing Manufacturers</h2>
+              {makes.length === 0 ? <p className="text-sm text-gray-400">No manufacturers added yet.</p> : (
+                <div className="grid gap-2">
+                  {makes.map(m => (
+                    <div key={m.id} className="border rounded p-3">
+                      {editingMake?.id === m.id ? (
+                        <div className="grid gap-2">
+                          <input className={inputClass} value={editingMake.name} onChange={e => setEditingMake({ ...editingMake, name: e.target.value })} />
+                          <div className="flex gap-2">
+                            <button onClick={saveMake} className="flex-1 bg-black text-white rounded p-2 text-sm hover:bg-gray-800 transition-colors">Save</button>
+                            <button onClick={() => setEditingMake(null)} className="flex-1 bg-gray-100 rounded p-2 text-sm hover:bg-gray-200 transition-colors">Cancel</button>
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="flex items-center justify-between gap-4">
+                          <div className="font-medium">{m.name}</div>
+                          <div className="flex gap-2 shrink-0">
+                            <button onClick={() => setEditingMake({ id: m.id, name: m.name })} className={editBtnClass}>Edit</button>
+                            <button onClick={() => deleteMake(m.id)} className={deleteBtnClass}>Delete</button>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* MODELS */}
+        {activeTab === 'models' && (
+          <div className="grid gap-6">
+            <div className="grid gap-3">
+              <h2 className="font-semibold">Add Model</h2>
+              <select className={selectClass} value={newModel.make_id} onChange={e => setNewModel({ ...newModel, make_id: e.target.value })}>
+                <option value="" disabled>Select manufacturer...</option>
+                {makes.map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
+              </select>
+              <input className={inputClass} placeholder="Model name e.g. M&P 9 2.0" value={newModel.name} onChange={e => setNewModel({ ...newModel, name: e.target.value })} />
+              <div>
+                <label className="block text-sm font-medium mb-1">Fit Type</label>
+                <select className={selectClass} value={newModel.fit_type} onChange={e => setNewModel({ ...newModel, fit_type: e.target.value, footprint_ids: [] })}>
+                  <option value="single">Single — one footprint cut</option>
+                  <option value="multi">Multi — multiple cuts milled in</option>
+                  <option value="plate_based">Plate-based — ships with adapter plates</option>
+                </select>
+              </div>
+              {newModel.fit_type === 'single' && (
+                <div>
+                  <label className="block text-sm font-medium mb-1">Footprint</label>
+                  <div className="grid gap-1">
+                    {footprints.map(f => (
+                      <label key={f.id} className={`flex items-center gap-2 p-2 border rounded cursor-pointer ${newModel.footprint_ids.includes(String(f.id)) ? 'border-black bg-gray-50' : ''}`}>
+                        <input type="radio" name="single_footprint" checked={newModel.footprint_ids.includes(String(f.id))} onChange={() => toggleFootprint(String(f.id))} />
+                        {f.name}
+                      </label>
+                    ))}
+                  </div>
+                </div>
+              )}
+              {newModel.fit_type === 'multi' && (
+                <div>
+                  <label className="block text-sm font-medium mb-1">Footprints (select all that apply)</label>
+                  <div className="grid gap-1">
+                    {footprints.map(f => (
+                      <label key={f.id} className={`flex items-center gap-2 p-2 border rounded cursor-pointer ${newModel.footprint_ids.includes(String(f.id)) ? 'border-black bg-gray-50' : ''}`}>
+                        <input type="checkbox" checked={newModel.footprint_ids.includes(String(f.id))} onChange={() => toggleFootprint(String(f.id))} />
+                        {f.name}
+                      </label>
+                    ))}
+                  </div>
+                </div>
+              )}
+              {newModel.fit_type === 'plate_based' && (
+                <p className="text-sm text-gray-500 bg-gray-50 rounded p-3">
+                  This model uses adapter plates. After saving, go to the <strong>Plates</strong> tab to add each plate and its footprint.
+                </p>
+              )}
+              <input className={inputClass} placeholder="Notes (optional)" value={newModel.notes} onChange={e => setNewModel({ ...newModel, notes: e.target.value })} />
+              <button onClick={addModel} className={btnClass}>Add Model</button>
+            </div>
+            <div>
+              <h2 className="font-semibold mb-3">Existing Models</h2>
+              {models.length === 0 ? <p className="text-sm text-gray-400">No models added yet.</p> : (
+                <div className="grid gap-2">
+                  {models.map(m => (
+                    <div key={m.id} className="border rounded p-3">
+                      {editingModel?.id === m.id ? (
+                        <div className="grid gap-2">
+                          <select className={selectClass} value={editingModel.make_id} onChange={e => setEditingModel({ ...editingModel, make_id: Number(e.target.value) })}>
+                            {makes.map(mk => <option key={mk.id} value={mk.id}>{mk.name}</option>)}
+                          </select>
+                          <input className={inputClass} value={editingModel.name} onChange={e => setEditingModel({ ...editingModel, name: e.target.value })} />
+                          <select className={selectClass} value={editingModel.fit_type} onChange={e => setEditingModel({ ...editingModel, fit_type: e.target.value })}>
+                            <option value="single">Single</option>
+                            <option value="multi">Multi</option>
+                            <option value="plate_based">Plate-based</option>
+                          </select>
+                          <input className={inputClass} placeholder="Notes (optional)" value={editingModel.notes || ''} onChange={e => setEditingModel({ ...editingModel, notes: e.target.value })} />
+                          <div className="flex gap-2">
+                            <button onClick={saveModel} className="flex-1 bg-black text-white rounded p-2 text-sm hover:bg-gray-800 transition-colors">Save</button>
+                            <button onClick={() => setEditingModel(null)} className="flex-1 bg-gray-100 rounded p-2 text-sm hover:bg-gray-200 transition-colors">Cancel</button>
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="flex items-start justify-between gap-4">
+                          <div>
+                            <div className="font-medium">{getMakeName(m.make_id)} {m.name}</div>
+                            <div className="text-sm text-gray-500 mt-0.5 capitalize">{m.fit_type.replace('_', ' ')}</div>
+                            {m.notes && <div className="text-sm text-gray-400 mt-0.5">{m.notes}</div>}
+                          </div>
+                          <div className="flex gap-2 shrink-0">
+                            <button onClick={() => setEditingModel({ id: m.id, name: m.name, make_id: m.make_id, fit_type: m.fit_type, notes: m.notes || '' })} className={editBtnClass}>Edit</button>
+                            <button onClick={() => deleteModel(m.id)} className={deleteBtnClass}>Delete</button>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* FOOTPRINTS */}
+        {activeTab === 'footprints' && (
+          <div className="grid gap-6">
+            <div className="grid gap-3">
+              <h2 className="font-semibold">Add Footprint</h2>
+              <input className={inputClass} placeholder="Footprint name e.g. RMR" value={newFootprint.name} onChange={e => setNewFootprint({ ...newFootprint, name: e.target.value })} />
+              <input className={inputClass} placeholder="Description (optional)" value={newFootprint.description} onChange={e => setNewFootprint({ ...newFootprint, description: e.target.value })} />
+              <button onClick={addFootprint} className={btnClass}>Add Footprint</button>
+            </div>
+            <div>
+              <h2 className="font-semibold mb-3">Existing Footprints</h2>
+              {footprints.length === 0 ? <p className="text-sm text-gray-400">No footprints added yet.</p> : (
+                <div className="grid gap-2">
+                  {footprints.map(f => (
+                    <div key={f.id} className="border rounded p-3">
+                      {editingFootprint?.id === f.id ? (
+                        <div className="grid gap-2">
+                          <input className={inputClass} value={editingFootprint.name} onChange={e => setEditingFootprint({ ...editingFootprint, name: e.target.value })} />
+                          <input className={inputClass} value={editingFootprint.description} onChange={e => setEditingFootprint({ ...editingFootprint, description: e.target.value })} />
+                          <div className="flex gap-2">
+                            <button onClick={saveFootprint} className="flex-1 bg-black text-white rounded p-2 text-sm hover:bg-gray-800 transition-colors">Save</button>
+                            <button onClick={() => setEditingFootprint(null)} className="flex-1 bg-gray-100 rounded p-2 text-sm hover:bg-gray-200 transition-colors">Cancel</button>
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="flex items-start justify-between gap-4">
+                          <div>
+                            <div className="font-medium">{f.name}</div>
+                            {f.description && <div className="text-sm text-gray-500 mt-0.5">{f.description}</div>}
+                          </div>
+                          <div className="flex gap-2 shrink-0">
+                            <button onClick={() => setEditingFootprint({ id: f.id, name: f.name, description: f.description || '' })} className={editBtnClass}>Edit</button>
+                            <button onClick={() => deleteFootprint(f.id)} className={deleteBtnClass}>Delete</button>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* OPTICS */}
+        {activeTab === 'optics' && (
+          <div className="grid gap-6">
+            <div className="grid gap-3">
+              <h2 className="font-semibold">Add Optic</h2>
+              <input className={inputClass} placeholder="Optic name e.g. RMR Type 2" value={newOptic.name} onChange={e => setNewOptic({ ...newOptic, name: e.target.value })} />
+              <input className={inputClass} placeholder="Manufacturer" value={newOptic.manufacturer} onChange={e => setNewOptic({ ...newOptic, manufacturer: e.target.value })} />
               <div>
                 <label className="block text-sm font-medium mb-1">Footprint</label>
-                <div className="grid gap-1">
-                  {footprints.map(f => (
-                    <label key={f.id} className={`flex items-center gap-2 p-2 border rounded cursor-pointer ${newModel.footprint_ids.includes(String(f.id)) ? 'border-black bg-gray-50' : ''}`}>
-                      <input type="radio" name="single_footprint" checked={newModel.footprint_ids.includes(String(f.id))} onChange={() => toggleFootprint(String(f.id))} />
-                      {f.name}
-                    </label>
-                  ))}
-                </div>
+                <select className={selectClass} value={newOptic.footprint_id} onChange={e => setNewOptic({ ...newOptic, footprint_id: e.target.value })}>
+                  <option value="" disabled>Select footprint...</option>
+                  {footprints.map(f => <option key={f.id} value={f.id}>{f.name}</option>)}
+                </select>
               </div>
-            )}
-            {newModel.fit_type === 'multi' && (
-              <div>
-                <label className="block text-sm font-medium mb-1">Footprints (select all that apply)</label>
-                <div className="grid gap-1">
-                  {footprints.map(f => (
-                    <label key={f.id} className={`flex items-center gap-2 p-2 border rounded cursor-pointer ${newModel.footprint_ids.includes(String(f.id)) ? 'border-black bg-gray-50' : ''}`}>
-                      <input type="checkbox" checked={newModel.footprint_ids.includes(String(f.id))} onChange={() => toggleFootprint(String(f.id))} />
-                      {f.name}
-                    </label>
-                  ))}
-                </div>
-              </div>
-            )}
-            {newModel.fit_type === 'plate_based' && (
-              <p className="text-sm text-gray-500 bg-gray-50 rounded p-3">
-                This model uses adapter plates. After saving, go to the <strong>Plates</strong> tab to add each plate and its footprint.
-              </p>
-            )}
-            <input className={inputClass} placeholder="Notes (optional)" value={newModel.notes} onChange={e => setNewModel({ ...newModel, notes: e.target.value })} />
-            <button onClick={addModel} className={btnClass}>Add Model</button>
-          </div>
-          <div>
-            <h2 className="font-semibold mb-3">Existing Models</h2>
-            {models.length === 0 ? <p className="text-sm text-gray-400">No models added yet.</p> : (
-              <div className="grid gap-2">
-                {models.map(m => (
-                  <div key={m.id} className="border rounded p-3">
-                    {editingModel?.id === m.id ? (
-                      <div className="grid gap-2">
-                        <select className={selectClass} value={editingModel.make_id} onChange={e => setEditingModel({ ...editingModel, make_id: Number(e.target.value) })}>
-                          {makes.map(mk => <option key={mk.id} value={mk.id}>{mk.name}</option>)}
-                        </select>
-                        <input className={inputClass} value={editingModel.name} onChange={e => setEditingModel({ ...editingModel, name: e.target.value })} />
-                        <select className={selectClass} value={editingModel.fit_type} onChange={e => setEditingModel({ ...editingModel, fit_type: e.target.value })}>
-                          <option value="single">Single</option>
-                          <option value="multi">Multi</option>
-                          <option value="plate_based">Plate-based</option>
-                        </select>
-                        <input className={inputClass} placeholder="Notes (optional)" value={editingModel.notes || ''} onChange={e => setEditingModel({ ...editingModel, notes: e.target.value })} />
-                        <div className="flex gap-2">
-                          <button onClick={saveModel} className="flex-1 bg-black text-white rounded p-2 text-sm hover:bg-gray-800 transition-colors">Save</button>
-                          <button onClick={() => setEditingModel(null)} className="flex-1 bg-gray-100 rounded p-2 text-sm hover:bg-gray-200 transition-colors">Cancel</button>
-                        </div>
-                      </div>
-                    ) : (
-                      <div className="flex items-start justify-between gap-4">
-                        <div>
-                          <div className="font-medium">{getMakeName(m.make_id)} {m.name}</div>
-                          <div className="text-sm text-gray-500 mt-0.5 capitalize">{m.fit_type.replace('_', ' ')}</div>
-                          {m.notes && <div className="text-sm text-gray-400 mt-0.5">{m.notes}</div>}
-                        </div>
-                        <div className="flex gap-2 shrink-0">
-                          <button onClick={() => setEditingModel({ id: m.id, name: m.name, make_id: m.make_id, fit_type: m.fit_type, notes: m.notes || '' })} className={editBtnClass}>Edit</button>
-                          <button onClick={() => deleteModel(m.id)} className={deleteBtnClass}>Delete</button>
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-        </div>
-      )}
-
-      {/* FOOTPRINTS */}
-      {activeTab === 'footprints' && (
-        <div className="grid gap-6">
-          <div className="grid gap-3">
-            <h2 className="font-semibold">Add Footprint</h2>
-            <input className={inputClass} placeholder="Footprint name e.g. RMR" value={newFootprint.name} onChange={e => setNewFootprint({ ...newFootprint, name: e.target.value })} />
-            <input className={inputClass} placeholder="Description (optional)" value={newFootprint.description} onChange={e => setNewFootprint({ ...newFootprint, description: e.target.value })} />
-            <button onClick={addFootprint} className={btnClass}>Add Footprint</button>
-          </div>
-          <div>
-            <h2 className="font-semibold mb-3">Existing Footprints</h2>
-            {footprints.length === 0 ? <p className="text-sm text-gray-400">No footprints added yet.</p> : (
-              <div className="grid gap-2">
-                {footprints.map(f => (
-                  <div key={f.id} className="border rounded p-3">
-                    {editingFootprint?.id === f.id ? (
-                      <div className="grid gap-2">
-                        <input className={inputClass} value={editingFootprint.name} onChange={e => setEditingFootprint({ ...editingFootprint, name: e.target.value })} />
-                        <input className={inputClass} value={editingFootprint.description} onChange={e => setEditingFootprint({ ...editingFootprint, description: e.target.value })} />
-                        <div className="flex gap-2">
-                          <button onClick={saveFootprint} className="flex-1 bg-black text-white rounded p-2 text-sm hover:bg-gray-800 transition-colors">Save</button>
-                          <button onClick={() => setEditingFootprint(null)} className="flex-1 bg-gray-100 rounded p-2 text-sm hover:bg-gray-200 transition-colors">Cancel</button>
-                        </div>
-                      </div>
-                    ) : (
-                      <div className="flex items-start justify-between gap-4">
-                        <div>
-                          <div className="font-medium">{f.name}</div>
-                          {f.description && <div className="text-sm text-gray-500 mt-0.5">{f.description}</div>}
-                        </div>
-                        <div className="flex gap-2 shrink-0">
-                          <button onClick={() => setEditingFootprint({ id: f.id, name: f.name, description: f.description || '' })} className={editBtnClass}>Edit</button>
-                          <button onClick={() => deleteFootprint(f.id)} className={deleteBtnClass}>Delete</button>
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-        </div>
-      )}
-
-      {/* OPTICS */}
-      {activeTab === 'optics' && (
-        <div className="grid gap-6">
-          <div className="grid gap-3">
-            <h2 className="font-semibold">Add Optic</h2>
-            <input className={inputClass} placeholder="Optic name e.g. RMR Type 2" value={newOptic.name} onChange={e => setNewOptic({ ...newOptic, name: e.target.value })} />
-            <input className={inputClass} placeholder="Manufacturer" value={newOptic.manufacturer} onChange={e => setNewOptic({ ...newOptic, manufacturer: e.target.value })} />
+              <input className={inputClass} placeholder="MSRP (optional)" value={newOptic.msrp} onChange={e => setNewOptic({ ...newOptic, msrp: e.target.value })} />
+              <input className={inputClass} placeholder="Affiliate URL (optional)" value={newOptic.affiliate_url} onChange={e => setNewOptic({ ...newOptic, affiliate_url: e.target.value })} />
+              <input className={inputClass} placeholder="Notes (optional)" value={newOptic.notes} onChange={e => setNewOptic({ ...newOptic, notes: e.target.value })} />
+              <button onClick={addOptic} className={btnClass}>Add Optic</button>
+            </div>
             <div>
-              <label className="block text-sm font-medium mb-1">Footprint</label>
-              <select className={selectClass} value={newOptic.footprint_id} onChange={e => setNewOptic({ ...newOptic, footprint_id: e.target.value })}>
-                <option value="" disabled>Select footprint...</option>
+              <h2 className="font-semibold mb-3">Existing Optics</h2>
+              {optics.length === 0 ? <p className="text-sm text-gray-400">No optics added yet.</p> : (
+                <div className="grid gap-2">
+                  {optics.map(o => (
+                    <div key={o.id} className="border rounded p-3">
+                      {editingOptic?.id === o.id ? (
+                        <div className="grid gap-2">
+                          <input className={inputClass} value={editingOptic.name} onChange={e => setEditingOptic({ ...editingOptic, name: e.target.value })} />
+                          <input className={inputClass} value={editingOptic.manufacturer} onChange={e => setEditingOptic({ ...editingOptic, manufacturer: e.target.value })} />
+                          <input className={inputClass} placeholder="MSRP" value={editingOptic.msrp} onChange={e => setEditingOptic({ ...editingOptic, msrp: e.target.value })} />
+                          <input className={inputClass} placeholder="Affiliate URL" value={editingOptic.affiliate_url} onChange={e => setEditingOptic({ ...editingOptic, affiliate_url: e.target.value })} />
+                          <input className={inputClass} placeholder="Notes" value={editingOptic.notes} onChange={e => setEditingOptic({ ...editingOptic, notes: e.target.value })} />
+                          <div className="flex gap-2">
+                            <button onClick={saveOptic} className="flex-1 bg-black text-white rounded p-2 text-sm hover:bg-gray-800 transition-colors">Save</button>
+                            <button onClick={() => setEditingOptic(null)} className="flex-1 bg-gray-100 rounded p-2 text-sm hover:bg-gray-200 transition-colors">Cancel</button>
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="flex items-start justify-between gap-4">
+                          <div>
+                            <div className="font-medium">{o.name}</div>
+                            <div className="text-sm text-gray-500 mt-0.5">{o.manufacturer}</div>
+                            {o.msrp && <div className="text-sm text-gray-400 mt-0.5">${o.msrp}</div>}
+                            {o.notes && <div className="text-sm text-gray-400 mt-0.5">{o.notes}</div>}
+                          </div>
+                          <div className="flex gap-2 shrink-0">
+                            <button onClick={() => setEditingOptic({ id: o.id, name: o.name, manufacturer: o.manufacturer, msrp: o.msrp ? String(o.msrp) : '', affiliate_url: o.affiliate_url || '', notes: o.notes || '' })} className={editBtnClass}>Edit</button>
+                            <button onClick={() => deleteOptic(o.id)} className={deleteBtnClass}>Delete</button>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* PLATES */}
+        {activeTab === 'plates' && (
+          <div className="grid gap-6">
+            <div className="grid gap-3">
+              <h2 className="font-semibold">Add Plate</h2>
+              <p className="text-sm text-gray-500">For plate-based guns only. Each plate presents one footprint to the optic.</p>
+              <select className={selectClass} value={newPlate.make_id} onChange={e => setNewPlate({ ...newPlate, make_id: e.target.value, model_id: '' })}>
+                <option value="" disabled>Select manufacturer...</option>
+                {makes.map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
+              </select>
+              <select className={selectClass} value={newPlate.model_id} onChange={e => setNewPlate({ ...newPlate, model_id: e.target.value })} disabled={!newPlate.make_id}>
+                <option value="" disabled>Select model...</option>
+                {plateModels.map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
+              </select>
+              <input className={inputClass} placeholder="Plate name e.g. Plate 1 — RMR" value={newPlate.name} onChange={e => setNewPlate({ ...newPlate, name: e.target.value })} />
+              <select className={selectClass} value={newPlate.footprint_id} onChange={e => setNewPlate({ ...newPlate, footprint_id: e.target.value })}>
+                <option value="" disabled>Select footprint this plate presents...</option>
                 {footprints.map(f => <option key={f.id} value={f.id}>{f.name}</option>)}
               </select>
+              <input className={inputClass} placeholder="Purchase URL (optional)" value={newPlate.purchase_url} onChange={e => setNewPlate({ ...newPlate, purchase_url: e.target.value })} />
+              <input className={inputClass} placeholder="Notes (optional)" value={newPlate.notes} onChange={e => setNewPlate({ ...newPlate, notes: e.target.value })} />
+              <button onClick={addPlate} className={btnClass}>Add Plate</button>
             </div>
-            <input className={inputClass} placeholder="MSRP (optional)" value={newOptic.msrp} onChange={e => setNewOptic({ ...newOptic, msrp: e.target.value })} />
-            <input className={inputClass} placeholder="Affiliate URL (optional)" value={newOptic.affiliate_url} onChange={e => setNewOptic({ ...newOptic, affiliate_url: e.target.value })} />
-            <input className={inputClass} placeholder="Notes (optional)" value={newOptic.notes} onChange={e => setNewOptic({ ...newOptic, notes: e.target.value })} />
-            <button onClick={addOptic} className={btnClass}>Add Optic</button>
+            <div>
+              <h2 className="font-semibold mb-3">Existing Plates</h2>
+              {plates.length === 0 ? <p className="text-sm text-gray-400">No plates added yet.</p> : (
+                <div className="grid gap-2">
+                  {plates.map(p => (
+                    <div key={p.id} className="border rounded p-3">
+                      {editingPlate?.id === p.id ? (
+                        <div className="grid gap-2">
+                          <input className={inputClass} value={editingPlate.name} onChange={e => setEditingPlate({ ...editingPlate, name: e.target.value })} />
+                          <select className={selectClass} value={editingPlate.footprint_id} onChange={e => setEditingPlate({ ...editingPlate, footprint_id: Number(e.target.value) })}>
+                            {footprints.map(f => <option key={f.id} value={f.id}>{f.name}</option>)}
+                          </select>
+                          <input className={inputClass} placeholder="Purchase URL" value={editingPlate.purchase_url || ''} onChange={e => setEditingPlate({ ...editingPlate, purchase_url: e.target.value })} />
+                          <input className={inputClass} placeholder="Notes" value={editingPlate.notes || ''} onChange={e => setEditingPlate({ ...editingPlate, notes: e.target.value })} />
+                          <div className="flex gap-2">
+                            <button onClick={savePlate} className="flex-1 bg-black text-white rounded p-2 text-sm hover:bg-gray-800 transition-colors">Save</button>
+                            <button onClick={() => setEditingPlate(null)} className="flex-1 bg-gray-100 rounded p-2 text-sm hover:bg-gray-200 transition-colors">Cancel</button>
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="flex items-start justify-between gap-4">
+                          <div>
+                            <div className="font-medium">{p.name}</div>
+                            <div className="text-sm text-gray-500 mt-0.5">{getModelName(p.model_id)} — {getFootprintName(p.footprint_id)}</div>
+                            {p.notes && <div className="text-sm text-gray-400 mt-0.5">{p.notes}</div>}
+                          </div>
+                          <div className="flex gap-2 shrink-0">
+                            <button onClick={() => setEditingPlate({ id: p.id, model_id: p.model_id, name: p.name, footprint_id: p.footprint_id, purchase_url: p.purchase_url || '', notes: p.notes || '' })} className={editBtnClass}>Edit</button>
+                            <button onClick={() => deletePlate(p.id)} className={deleteBtnClass}>Delete</button>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
           </div>
-          <div>
-            <h2 className="font-semibold mb-3">Existing Optics</h2>
-            {optics.length === 0 ? <p className="text-sm text-gray-400">No optics added yet.</p> : (
-              <div className="grid gap-2">
-                {optics.map(o => (
-                  <div key={o.id} className="border rounded p-3">
-                    {editingOptic?.id === o.id ? (
-                      <div className="grid gap-2">
-                        <input className={inputClass} value={editingOptic.name} onChange={e => setEditingOptic({ ...editingOptic, name: e.target.value })} />
-                        <input className={inputClass} value={editingOptic.manufacturer} onChange={e => setEditingOptic({ ...editingOptic, manufacturer: e.target.value })} />
-                        <input className={inputClass} placeholder="MSRP" value={editingOptic.msrp} onChange={e => setEditingOptic({ ...editingOptic, msrp: e.target.value })} />
-                        <input className={inputClass} placeholder="Affiliate URL" value={editingOptic.affiliate_url} onChange={e => setEditingOptic({ ...editingOptic, affiliate_url: e.target.value })} />
-                        <input className={inputClass} placeholder="Notes" value={editingOptic.notes} onChange={e => setEditingOptic({ ...editingOptic, notes: e.target.value })} />
-                        <div className="flex gap-2">
-                          <button onClick={saveOptic} className="flex-1 bg-black text-white rounded p-2 text-sm hover:bg-gray-800 transition-colors">Save</button>
-                          <button onClick={() => setEditingOptic(null)} className="flex-1 bg-gray-100 rounded p-2 text-sm hover:bg-gray-200 transition-colors">Cancel</button>
-                        </div>
-                      </div>
-                    ) : (
-                      <div className="flex items-start justify-between gap-4">
-                        <div>
-                          <div className="font-medium">{o.name}</div>
-                          <div className="text-sm text-gray-500 mt-0.5">{o.manufacturer}</div>
-                          {o.msrp && <div className="text-sm text-gray-400 mt-0.5">${o.msrp}</div>}
-                          {o.notes && <div className="text-sm text-gray-400 mt-0.5">{o.notes}</div>}
-                        </div>
-                        <div className="flex gap-2 shrink-0">
-                          <button onClick={() => setEditingOptic({ id: o.id, name: o.name, manufacturer: o.manufacturer, msrp: o.msrp ? String(o.msrp) : '', affiliate_url: o.affiliate_url || '', notes: o.notes || '' })} className={editBtnClass}>Edit</button>
-                          <button onClick={() => deleteOptic(o.id)} className={deleteBtnClass}>Delete</button>
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-        </div>
-      )}
-
-      {/* PLATES */}
-      {activeTab === 'plates' && (
-        <div className="grid gap-6">
-          <div className="grid gap-3">
-            <h2 className="font-semibold">Add Plate</h2>
-            <p className="text-sm text-gray-500">For plate-based guns only. Each plate presents one footprint to the optic.</p>
-            <select className={selectClass} value={newPlate.make_id} onChange={e => setNewPlate({ ...newPlate, make_id: e.target.value, model_id: '' })}>
-              <option value="" disabled>Select manufacturer...</option>
-              {makes.map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
-            </select>
-            <select className={selectClass} value={newPlate.model_id} onChange={e => setNewPlate({ ...newPlate, model_id: e.target.value })} disabled={!newPlate.make_id}>
-              <option value="" disabled>Select model...</option>
-              {plateModels.map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
-            </select>
-            <input className={inputClass} placeholder="Plate name e.g. Plate 1 — RMR" value={newPlate.name} onChange={e => setNewPlate({ ...newPlate, name: e.target.value })} />
-            <select className={selectClass} value={newPlate.footprint_id} onChange={e => setNewPlate({ ...newPlate, footprint_id: e.target.value })}>
-              <option value="" disabled>Select footprint this plate presents...</option>
-              {footprints.map(f => <option key={f.id} value={f.id}>{f.name}</option>)}
-            </select>
-            <input className={inputClass} placeholder="Purchase URL (optional)" value={newPlate.purchase_url} onChange={e => setNewPlate({ ...newPlate, purchase_url: e.target.value })} />
-            <input className={inputClass} placeholder="Notes (optional)" value={newPlate.notes} onChange={e => setNewPlate({ ...newPlate, notes: e.target.value })} />
-            <button onClick={addPlate} className={btnClass}>Add Plate</button>
-          </div>
-          <div>
-            <h2 className="font-semibold mb-3">Existing Plates</h2>
-            {plates.length === 0 ? <p className="text-sm text-gray-400">No plates added yet.</p> : (
-              <div className="grid gap-2">
-                {plates.map(p => (
-                  <div key={p.id} className="border rounded p-3">
-                    {editingPlate?.id === p.id ? (
-                      <div className="grid gap-2">
-                        <input className={inputClass} value={editingPlate.name} onChange={e => setEditingPlate({ ...editingPlate, name: e.target.value })} />
-                        <select className={selectClass} value={editingPlate.footprint_id} onChange={e => setEditingPlate({ ...editingPlate, footprint_id: Number(e.target.value) })}>
-                          {footprints.map(f => <option key={f.id} value={f.id}>{f.name}</option>)}
-                        </select>
-                        <input className={inputClass} placeholder="Purchase URL" value={editingPlate.purchase_url || ''} onChange={e => setEditingPlate({ ...editingPlate, purchase_url: e.target.value })} />
-                        <input className={inputClass} placeholder="Notes" value={editingPlate.notes || ''} onChange={e => setEditingPlate({ ...editingPlate, notes: e.target.value })} />
-                        <div className="flex gap-2">
-                          <button onClick={savePlate} className="flex-1 bg-black text-white rounded p-2 text-sm hover:bg-gray-800 transition-colors">Save</button>
-                          <button onClick={() => setEditingPlate(null)} className="flex-1 bg-gray-100 rounded p-2 text-sm hover:bg-gray-200 transition-colors">Cancel</button>
-                        </div>
-                      </div>
-                    ) : (
-                      <div className="flex items-start justify-between gap-4">
-                        <div>
-                          <div className="font-medium">{p.name}</div>
-                          <div className="text-sm text-gray-500 mt-0.5">{getModelName(p.model_id)} — {getFootprintName(p.footprint_id)}</div>
-                          {p.notes && <div className="text-sm text-gray-400 mt-0.5">{p.notes}</div>}
-                        </div>
-                        <div className="flex gap-2 shrink-0">
-                          <button onClick={() => setEditingPlate({ id: p.id, model_id: p.model_id, name: p.name, footprint_id: p.footprint_id, purchase_url: p.purchase_url || '', notes: p.notes || '' })} className={editBtnClass}>Edit</button>
-                          <button onClick={() => deletePlate(p.id)} className={deleteBtnClass}>Delete</button>
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-        </div>
-      )}
-    </main>
+        )}
+      </main>
+    </div>
   )
 }
