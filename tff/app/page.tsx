@@ -317,7 +317,7 @@ export default function Home() {
               <div>
                 <div className="font-medium text-[#e6edf3] font-[family-name:var(--font-syne)]">Adapter Plate System</div>
                 <p className="text-sm text-[#8b949e] mt-0.5">
-                  This handgun ships with an adapter plate system. Compatible optics depend on which plate you install.
+                  This handgun uses an adapter plate system. Compatible optics depend on which plate you install.
                 </p>
               </div>
             </div>

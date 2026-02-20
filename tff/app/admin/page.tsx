@@ -69,6 +69,14 @@ export default function AdminPage() {
   const [exportTables, setExportTables] = useState<string[]>([])
   const [exporting, setExporting] = useState(false)
 
+  // --- CSV Import state ---
+  const [importTable, setImportTable] = useState('')
+  const [importRows, setImportRows] = useState<Record<string, string>[]>([])
+  const [importFileName, setImportFileName] = useState('')
+  const [importing, setImporting] = useState(false)
+  const [importResult, setImportResult] = useState<{ inserted: number; updated: number; skipped: string[] } | null>(null)
+  const importFileRef = useRef<HTMLInputElement>(null)
+
   // --- Refresh helpers ---
   const refreshMakes = () => supabase.from('makes').select('*').order('name').then(({ data }) => { if (data) setMakes(data) })
   const refreshModels = () => supabase.from('models').select('*').order('name').then(({ data }) => { if (data) setModels(data) })
@@ -381,6 +389,197 @@ export default function AdminPage() {
     showMessage('Plate deleted'); refreshPlates()
   }
 
+  // ================================================================
+  // CSV IMPORT
+  // ================================================================
+  const CSV_TEMPLATES: Record<string, string> = {
+    makes: 'name',
+    optic_makes: 'name',
+    footprints: 'name,description',
+    models: 'make,name,fit_type,notes',
+    optics: 'optic_make,name,sku,footprint,msrp,reticle,affiliate_url,notes',
+    plates: 'make,model,name,footprint,purchase_url,notes',
+  }
+
+  const parseCSV = (text: string): Record<string, string>[] => {
+    const lines = text.trim().split(/\r?\n/)
+    if (lines.length < 2) return []
+    const headers = lines[0].split(',').map(h => h.trim().replace(/^"|"$/g, ''))
+    return lines.slice(1).map(line => {
+      // Handle quoted fields with commas inside
+      const values: string[] = []
+      let current = ''
+      let inQuotes = false
+      for (let i = 0; i < line.length; i++) {
+        if (line[i] === '"') { inQuotes = !inQuotes }
+        else if (line[i] === ',' && !inQuotes) { values.push(current.trim()); current = '' }
+        else { current += line[i] }
+      }
+      values.push(current.trim())
+      const row: Record<string, string> = {}
+      headers.forEach((h, i) => { row[h] = (values[i] || '').replace(/^"|"$/g, '') })
+      return row
+    }).filter(row => Object.values(row).some(v => v !== ''))
+  }
+
+  const handleImportFile = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+    setImportFileName(file.name)
+    setImportResult(null)
+    const reader = new FileReader()
+    reader.onload = (ev) => {
+      const text = ev.target?.result as string
+      setImportRows(parseCSV(text))
+    }
+    reader.readAsText(file)
+  }
+
+  const runImport = async () => {
+    if (!importTable || importRows.length === 0) return
+    setImporting(true)
+    setImportResult(null)
+
+    let inserted = 0
+    let updated = 0
+    const skipped: string[] = []
+
+    // Build lookup maps for resolving foreign keys by name
+    const makeMap = Object.fromEntries(makes.map(m => [m.name.toLowerCase(), m.id]))
+    const footprintMap = Object.fromEntries(footprints.map(f => [f.name.toLowerCase(), f.id]))
+    const opticMakeMap = Object.fromEntries(opticMakes.map(m => [m.name.toLowerCase(), m.id]))
+    const modelMap = Object.fromEntries(models.map(m => [m.name.toLowerCase(), m.id]))
+
+    for (const row of importRows) {
+      try {
+        let data: Record<string, any> = {}
+        let matchField = 'name'
+        let matchValue = row.name?.trim()
+
+        if (importTable === 'makes' || importTable === 'optic_makes') {
+          if (!row.name?.trim()) { skipped.push(`Empty name row`); continue }
+          data = { name: row.name.trim() }
+
+        } else if (importTable === 'footprints') {
+          if (!row.name?.trim()) { skipped.push(`Empty name row`); continue }
+          data = { name: row.name.trim(), description: row.description?.trim() || null }
+
+        } else if (importTable === 'models') {
+          if (!row.name?.trim() || !row.make?.trim()) { skipped.push(`Row missing name or make: ${row.name}`); continue }
+          const make_id = makeMap[row.make.trim().toLowerCase()]
+          if (!make_id) { skipped.push(`Unknown make "${row.make}" for model "${row.name}"`); continue }
+          const fit_type = row.fit_type?.trim() || 'single'
+          if (!['single', 'multi', 'plate_based'].includes(fit_type)) {
+            skipped.push(`Invalid fit_type "${fit_type}" for model "${row.name}"`); continue
+          }
+          data = { name: row.name.trim(), make_id, fit_type, notes: row.notes?.trim() || null }
+          matchField = 'name'
+          matchValue = row.name.trim()
+
+        } else if (importTable === 'optics') {
+          if (!row.name?.trim() || !row.optic_make?.trim()) { skipped.push(`Row missing name or optic_make: ${row.name}`); continue }
+          const optic_make_id = opticMakeMap[row.optic_make.trim().toLowerCase()]
+          if (!optic_make_id) { skipped.push(`Unknown optic make "${row.optic_make}" for optic "${row.name}"`); continue }
+          const footprint_id = row.footprint?.trim() ? footprintMap[row.footprint.trim().toLowerCase()] : null
+          if (row.footprint?.trim() && !footprint_id) {
+            skipped.push(`Unknown footprint "${row.footprint}" for optic "${row.name}"`); continue
+          }
+          data = {
+            name: row.name.trim(),
+            optic_make_id,
+            sku: row.sku?.trim() || null,
+            msrp: row.msrp?.trim() ? Number(row.msrp.trim()) : null,
+            reticle: row.reticle?.trim() || null,
+            affiliate_url: row.affiliate_url?.trim() || null,
+            notes: row.notes?.trim() || null,
+            _footprint_id: footprint_id, // handled separately after upsert
+          }
+
+        } else if (importTable === 'plates') {
+          if (!row.name?.trim() || !row.model?.trim()) { skipped.push(`Row missing name or model: ${row.name}`); continue }
+          const model_id = modelMap[row.model.trim().toLowerCase()]
+          if (!model_id) { skipped.push(`Unknown model "${row.model}" for plate "${row.name}"`); continue }
+          const footprint_id = row.footprint?.trim() ? footprintMap[row.footprint.trim().toLowerCase()] : null
+          if (!footprint_id) { skipped.push(`Unknown footprint "${row.footprint}" for plate "${row.name}"`); continue }
+          data = {
+            name: row.name.trim(), model_id, footprint_id,
+            purchase_url: row.purchase_url?.trim() || null,
+            notes: row.notes?.trim() || null,
+          }
+        }
+
+        // Check if record exists by name (and make_id for models)
+        let existingQuery = supabase.from(importTable).select('id').eq(matchField, matchValue)
+        if (importTable === 'models' && data.make_id) existingQuery = existingQuery.eq('make_id', data.make_id)
+        if (importTable === 'optics' && data.optic_make_id) existingQuery = existingQuery.eq('optic_make_id', data.optic_make_id)
+
+        const { data: existing } = await existingQuery.maybeSingle()
+
+        // Strip internal helper fields before sending to DB
+        const footprintIdForJunction = data._footprint_id
+        delete data._footprint_id
+
+        if (existing) {
+          // Update
+          await fetch('/api/admin/data', {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ table: importTable, id: existing.id, data })
+          })
+          updated++
+        } else {
+          // Insert
+          const res = await fetch('/api/admin/data', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ table: importTable, data, returning: true })
+          })
+          const json = await res.json()
+          if (!res.ok) { skipped.push(`Insert failed for "${matchValue}": ${json.error}`); continue }
+
+          // For optics, also insert optic_footprints junction row
+          if (importTable === 'optics' && footprintIdForJunction && json.id) {
+            const { data: existingJunction } = await supabase
+              .from('optic_footprints')
+              .select('id')
+              .eq('optic_id', json.id)
+              .eq('footprint_id', footprintIdForJunction)
+              .maybeSingle()
+            if (!existingJunction) {
+              await fetch('/api/admin/data', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ table: 'optic_footprints', data: { optic_id: json.id, footprint_id: footprintIdForJunction } })
+              })
+            }
+          }
+          inserted++
+        }
+      } catch (err: any) {
+        skipped.push(`Error on row "${row.name}": ${err.message}`)
+      }
+    }
+
+    setImportResult({ inserted, updated, skipped })
+    setImporting(false)
+
+    // Refresh all tables so UI reflects changes
+    refreshMakes(); refreshModels(); refreshFootprints()
+    refreshOpticMakes(); refreshOptics(); refreshPlates()
+
+    if (importFileRef.current) importFileRef.current.value = ''
+    setImportRows([])
+    setImportFileName('')
+  }
+
+  const downloadTemplate = (table: string) => {
+    const csv = CSV_TEMPLATES[table] + '\n'
+    const blob = new Blob([csv], { type: 'text/csv' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a'); a.href = url; a.download = `${table}-template.csv`; a.click()
+    URL.revokeObjectURL(url)
+  }
+
   // --- Lookups ---
   const getMakeName = (id: number) => makes.find(m => m.id === id)?.name || '—'
   const getFootprintName = (id: number) => footprints.find(f => f.id === id)?.name || '—'
@@ -501,6 +700,81 @@ export default function AdminPage() {
           >
             {exporting ? 'Exporting...' : 'Export'}
           </button>
+        </div>
+
+        {/* IMPORT CSV */}
+        <div>
+          <div className="text-xs font-semibold uppercase tracking-widest text-[#484f58] mb-3 font-[family-name:var(--font-syne)]">
+            Import CSV
+          </div>
+
+          <div className="grid gap-2">
+            <select
+              className="bg-[#1c2128] border border-[#30363d] rounded p-2 w-full text-[#e6edf3] text-sm focus:outline-none focus:border-[#58a6ff] transition-colors"
+              value={importTable}
+              onChange={e => { setImportTable(e.target.value); setImportRows([]); setImportFileName(''); setImportResult(null) }}
+            >
+              <option value="" disabled>Select table...</option>
+              {['makes', 'optic_makes', 'footprints', 'models', 'optics', 'plates'].map(t => (
+                <option key={t} value={t}>{t}</option>
+              ))}
+            </select>
+
+            {importTable && (
+              <button
+                onClick={() => downloadTemplate(importTable)}
+                className="w-full text-xs bg-transparent text-[#58a6ff] border border-[#58a6ff]/30 rounded p-1.5 hover:bg-[#58a6ff]/10 transition-colors"
+              >
+                Download template CSV
+              </button>
+            )}
+
+            <div
+              onClick={() => importTable && importFileRef.current?.click()}
+              className={`flex items-center gap-2 p-2.5 border border-dashed rounded transition-colors text-sm ${importTable ? 'border-[#30363d] hover:border-[#58a6ff] cursor-pointer text-[#8b949e]' : 'border-[#21262d] text-[#484f58] cursor-not-allowed'}`}
+            >
+              <svg className="w-3.5 h-3.5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
+              </svg>
+              <span className="truncate">{importFileName || 'Choose CSV file...'}</span>
+            </div>
+            <input ref={importFileRef} type="file" accept=".csv" className="hidden" onChange={handleImportFile} />
+
+            {importRows.length > 0 && (
+              <div className="bg-[#161b22] border border-[#30363d] rounded p-2 text-xs text-[#8b949e]">
+                <span className="text-[#3fb950] font-medium">{importRows.length} rows</span> ready to import
+                {importRows.length > 0 && (
+                  <div className="mt-1 text-[#484f58] truncate">
+                    Preview: {Object.values(importRows[0]).slice(0, 3).join(', ')}…
+                  </div>
+                )}
+              </div>
+            )}
+
+            {importResult && (
+              <div className="bg-[#161b22] border border-[#30363d] rounded p-2 text-xs grid gap-1">
+                <div className="text-[#3fb950]">✓ {importResult.inserted} inserted, {importResult.updated} updated</div>
+                {importResult.skipped.length > 0 && (
+                  <div className="text-[#f85149]">
+                    ✗ {importResult.skipped.length} skipped:
+                    <ul className="mt-1 grid gap-0.5">
+                      {importResult.skipped.map((s, i) => (
+                        <li key={i} className="text-[#484f58] leading-snug">{s}</li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+              </div>
+            )}
+
+            <button
+              onClick={runImport}
+              disabled={importing || importRows.length === 0 || !importTable}
+              className="w-full text-sm bg-[#21262d] text-[#c9d1d9] border border-[#30363d] rounded p-2 font-medium hover:bg-[#30363d] transition-colors disabled:opacity-40"
+            >
+              {importing ? 'Importing...' : 'Import'}
+            </button>
+          </div>
         </div>
       </aside>
 
