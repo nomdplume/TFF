@@ -308,7 +308,7 @@ export default function Home() {
                       </div>
                       {plate.purchase_url && (
                         
-                          href={plate.purchase_url}
+                          <a href={plate.purchase_url}
                           target="_blank"
                           rel="noopener noreferrer"
                           className="shrink-0 text-sm bg-[#21262d] hover:bg-[#30363d] text-[#c9d1d9] border border-[#30363d] px-3 py-1.5 rounded-lg transition-colors"
@@ -341,7 +341,7 @@ export default function Home() {
                                 </div>
                                 {optic.affiliate_url && (
                                   
-                                    href={optic.affiliate_url}
+                                    <a href={optic.affiliate_url}
                                     target="_blank"
                                     rel="noopener noreferrer"
                                     className="inline-flex items-center gap-1.5 mt-2 text-sm bg-[#238636] hover:bg-[#2ea043] text-white px-3 py-1 rounded-lg transition-colors font-medium"
