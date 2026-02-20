@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import { supabase } from './lib/supabase'
+import ComingSoon from './components/ComingSoon'
 
 type Make = { id: number; name: string }
 type Model = { id: number; name: string; make_id: number; fit_type: string; notes: string }
@@ -10,6 +11,10 @@ type Footprint = { id: number; name: string; description: string }
 type Plate = { id: number; name: string; footprint_id: number; purchase_url: string; notes: string }
 
 export default function Home() {
+  if (process.env.NEXT_PUBLIC_COMING_SOON === 'true') {
+    return <ComingSoon />
+  }
+
   const [makes, setMakes] = useState<Make[]>([])
   const [models, setModels] = useState<Model[]>([])
   const [selectedMake, setSelectedMake] = useState<number | null>(null)
