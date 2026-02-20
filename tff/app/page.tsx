@@ -50,58 +50,82 @@ export default function Home() {
     })
   }, [selectedMake])
 
+  const abortRef = useRef<AbortController | null>(null)
+
   useEffect(() => {
     if (!selectedModel) return
     setOptics([]); setPlates([]); setSearched(false)
-    fetchResults(selectedModel)
+
+    abortRef.current?.abort()
+    abortRef.current = new AbortController()
+
+    fetchResults(selectedModel, abortRef.current.signal)
   }, [selectedModel])
 
-  const fetchResults = async (model: Model) => {
+  const fetchResults = async (model: Model, signal: AbortSignal) => {
     setLoading(true)
 
-    if (model.fit_type === 'plate_based') {
-      const { data: plateData } = await supabase.from('plates').select('*').eq('model_id', model.id)
+    try {
+      if (model.fit_type === 'plate_based') {
+        const { data: plateData } = await supabase
+          .from('plates').select('*').eq('model_id', model.id)
+          .abortSignal(signal)
 
-      if (!plateData || plateData.length === 0) {
-        setPlates([]); setLoading(false); setSearched(true); return
+        if (signal.aborted) return
+        if (!plateData || plateData.length === 0) {
+          setPlates([]); setLoading(false); setSearched(true); return
+        }
+
+        const enrichedPlates = await Promise.all(plateData.map(async (plate) => {
+          const { data: fpData } = await supabase
+            .from('footprints').select('*').eq('id', plate.footprint_id).single()
+            .abortSignal(signal)
+          const { data: ofData } = await supabase
+            .from('optic_footprints')
+            .select('optics(*, optic_makes(name))')
+            .eq('footprint_id', plate.footprint_id)
+            .abortSignal(signal)
+          const opticsList = ofData ? ofData.map((r: any) => ({
+            ...r.optics, optic_make: r.optics?.optic_makes
+          })) : []
+          return { ...plate, footprint: fpData, optics: opticsList }
+        }))
+
+        if (signal.aborted) return
+        setPlates(enrichedPlates)
+
+      } else {
+        const { data: mfData } = await supabase
+          .from('model_footprints').select('footprint_id').eq('model_id', model.id)
+          .abortSignal(signal)
+
+        if (signal.aborted) return
+        if (!mfData || mfData.length === 0) {
+          setOptics([]); setLoading(false); setSearched(true); return
+        }
+
+        const enrichedFootprints = await Promise.all(mfData.map(async (mf) => {
+          const { data: fpData } = await supabase
+            .from('footprints').select('*').eq('id', mf.footprint_id).single()
+            .abortSignal(signal)
+          const { data: ofData } = await supabase
+            .from('optic_footprints')
+            .select('optics(*, optic_makes(name))')
+            .eq('footprint_id', mf.footprint_id)
+            .abortSignal(signal)
+          const opticsList = ofData ? ofData.map((r: any) => ({
+            ...r.optics, optic_make: r.optics?.optic_makes
+          })) : []
+          return { footprint: fpData, optics: opticsList }
+        }))
+
+        if (signal.aborted) return
+        setOptics(enrichedFootprints)
       }
 
-      const enrichedPlates = await Promise.all(plateData.map(async (plate) => {
-        const { data: fpData } = await supabase.from('footprints').select('*').eq('id', plate.footprint_id).single()
-        const { data: ofData } = await supabase
-          .from('optic_footprints')
-          .select('optics(*, optic_makes(name))')
-          .eq('footprint_id', plate.footprint_id)
-        const opticsList = ofData ? ofData.map((r: any) => ({
-          ...r.optics,
-          optic_make: r.optics?.optic_makes
-        })) : []
-        return { ...plate, footprint: fpData, optics: opticsList }
-      }))
-
-      setPlates(enrichedPlates)
-
-    } else {
-      const { data: mfData } = await supabase.from('model_footprints').select('footprint_id').eq('model_id', model.id)
-
-      if (!mfData || mfData.length === 0) {
-        setOptics([]); setLoading(false); setSearched(true); return
-      }
-
-      const enrichedFootprints = await Promise.all(mfData.map(async (mf) => {
-        const { data: fpData } = await supabase.from('footprints').select('*').eq('id', mf.footprint_id).single()
-        const { data: ofData } = await supabase
-          .from('optic_footprints')
-          .select('optics(*, optic_makes(name))')
-          .eq('footprint_id', mf.footprint_id)
-        const opticsList = ofData ? ofData.map((r: any) => ({
-          ...r.optics,
-          optic_make: r.optics?.optic_makes
-        })) : []
-        return { footprint: fpData, optics: opticsList }
-      }))
-
-      setOptics(enrichedFootprints)
+    } catch (err: any) {
+      if (err?.name === 'AbortError') return
+      console.error('fetchResults error:', err)
     }
 
     setLoading(false)
