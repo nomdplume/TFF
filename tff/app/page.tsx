@@ -259,7 +259,7 @@ export default function Home() {
                           )}
                           {optic.affiliate_url && (
                             
-                              href={optic.affiliate_url}
+                              <a href={optic.affiliate_url}
                               target="_blank"
                               rel="noopener noreferrer"
                               className="inline-flex items-center gap-1.5 mt-3 text-sm bg-[#238636] hover:bg-[#2ea043] text-white px-3 py-1.5 rounded-lg transition-colors font-medium"
