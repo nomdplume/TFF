@@ -248,25 +248,6 @@ export default function Home() {
   return (
     <div className="min-h-screen bg-[#0d1117] text-[#e6edf3] font-[family-name:var(--font-dm-sans)]">
 
-      {/* HEADER */}
-      <header className="border-b border-[#21262d] bg-[#0d1117]">
-        <div className="max-w-5xl mx-auto px-6 py-4 flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <div className="w-8 h-8 bg-[#21262d] rounded flex items-center justify-center text-xs text-[#484f58]">
-              TFF
-            </div>
-            <span className="font-[family-name:var(--font-syne)] font-bold text-[#e6edf3] text-lg tracking-tight">
-              Tactical Fit Finder
-            </span>
-          </div>
-          <nav className="flex items-center gap-6">
-            <a href="#how-it-works" className="text-sm text-[#8b949e] hover:text-[#e6edf3] transition-colors">
-              How It Works
-            </a>
-          </nav>
-        </div>
-      </header>
-
       {/* HERO */}
       <section className="border-b border-[#21262d] bg-[#0d1117]">
         <div className="max-w-5xl mx-auto px-6 py-16 text-center">
