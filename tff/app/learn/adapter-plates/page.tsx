@@ -1,6 +1,3 @@
-// Place this file at: src/app/learn/adapter-plates/page.tsx
-// Also create src/app/learn/adapter-plates/ directory if it doesn't exist.
-
 import type { Metadata } from "next";
 import Link from "next/link";
 
