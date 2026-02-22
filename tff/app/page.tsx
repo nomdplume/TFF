@@ -361,7 +361,7 @@ export default function Home() {
                   <span className="text-[#3fb950] font-medium">
                     {footprintOptics.map(g => g.footprint?.name).join(' / ')}
                   </span>{' '}
-                  footprint. These optics are compatible with the{' '}
+                  footprint. The optics displayed below are compatible with the{' '}
                   <span className="text-[#3fb950] font-medium">
                     {footprintOptics.map(g => g.footprint?.name).join(' / ')}
                   </span>{' '}
@@ -374,7 +374,7 @@ export default function Home() {
                       <span className="text-[#3fb950] font-medium">
                         {footprintOptics.map(g => g.footprint?.name).join(' / ')}
                       </span>{' '}
-                      footprint can also be adapted to a variety of other footprints by adapter plates.
+                      footprint can also be adapted by a red dot adapter plate.
                     </>
                   )}
                 </p>
