@@ -372,7 +372,7 @@ export default function Home() {
               <div>
                 <SectionHeader label="Direct Mount" count={directOptics.length} color="#58a6ff" />
                 <p className="text-sm text-[#8b949e] mb-4">
-                  These optics are designed to mount directly on this handgun without a footprint adapter.
+                  These optics are designed to mount directly on this handgun without a plate/adapter.
                 </p>
                 <div className="grid gap-3">
                   {directOptics.map((optic) => (
