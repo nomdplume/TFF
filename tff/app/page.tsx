@@ -342,12 +342,42 @@ export default function Home() {
           <div className="grid gap-10">
 
             {/* Results summary header */}
-            <div className="flex items-center gap-3">
-              <h2 className="font-[family-name:var(--font-syne)] font-semibold text-[#e6edf3]">Compatible Optics</h2>
-              {totalResults > 0 && (
-                <span className="text-xs bg-[#21262d] text-[#8b949e] border border-[#30363d] rounded-full px-2.5 py-0.5">
-                  {totalResults} result{totalResults !== 1 ? 's' : ''}
-                </span>
+            <div>
+              <div className="flex items-center gap-3 mb-3">
+                <h2 className="font-[family-name:var(--font-syne)] font-semibold text-[#e6edf3]">Compatible Optics</h2>
+                {totalResults > 0 && (
+                  <span className="text-xs bg-[#21262d] text-[#8b949e] border border-[#30363d] rounded-full px-2.5 py-0.5">
+                    {totalResults} result{totalResults !== 1 ? 's' : ''}
+                  </span>
+                )}
+              </div>
+              {footprintOptics.length > 0 && selectedModel && (
+                <p className="text-[#8b949e] text-sm leading-relaxed">
+                  The{' '}
+                  <span className="text-[#e6edf3] font-medium">
+                    {makes.find(m => m.id === selectedModel.make_id)?.name} {selectedModel.name}
+                  </span>{' '}
+                  features a{' '}
+                  <span className="text-[#3fb950] font-medium">
+                    {footprintOptics.map(g => g.footprint?.name).join(' / ')}
+                  </span>{' '}
+                  footprint. These optics are compatible with the{' '}
+                  <span className="text-[#3fb950] font-medium">
+                    {footprintOptics.map(g => g.footprint?.name).join(' / ')}
+                  </span>{' '}
+                  footprint.{plates.length > 0 && (
+                    <>{' '}The{' '}
+                      <span className="text-[#e6edf3] font-medium">
+                        {makes.find(m => m.id === selectedModel.make_id)?.name} {selectedModel.name}
+                      </span>
+                      {"'s stock "}
+                      <span className="text-[#3fb950] font-medium">
+                        {footprintOptics.map(g => g.footprint?.name).join(' / ')}
+                      </span>{' '}
+                      footprint can also be adapted to a variety of other footprints by adapter plates.
+                    </>
+                  )}
+                </p>
               )}
             </div>
 
@@ -372,7 +402,7 @@ export default function Home() {
               <div>
                 <SectionHeader label="Direct Mount" count={directOptics.length} color="#58a6ff" />
                 <p className="text-sm text-[#8b949e] mb-4">
-                  These optics are designed to mount directly on this handgun without a plate/adapter.
+                  These optics are designed to mount directly on this handgun without a footprint adapter.
                 </p>
                 <div className="grid gap-3">
                   {directOptics.map((optic) => (
